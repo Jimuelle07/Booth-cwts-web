@@ -43,8 +43,4 @@ logs/
 coverage/
 
 # Personal / project notes
-CLAUDE.md
-CLAUDE.local.md
-system_architecture.md
-.playwright-mcp
-.claude/
+
