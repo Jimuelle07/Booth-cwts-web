@@ -87,7 +87,7 @@ Run these from the `frontend/` directory.
 
 # Game Developer Guide
 
-This section is for teammates building individual games. Each game lives in its own folder and plugs into the platform through a single registry file. You do **not** need to touch any core platform code.
+Each game lives in its own folder and plugs into the platform through a single registry file. You do **not** need to touch any core platform code.
 
 ---
 
