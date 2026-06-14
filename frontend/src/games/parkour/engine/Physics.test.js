@@ -16,15 +16,33 @@ import {
 const DT = 1000 / 60 // ~16.667ms fixed timestep
 
 function stillInput() {
-  return { left: false, right: false, down: false, jumpHeld: false, jumpPressed: false }
+  return {
+    left: false,
+    right: false,
+    down: false,
+    jumpHeld: false,
+    jumpPressed: false,
+  }
 }
 
 function jumpInput() {
-  return { left: false, right: false, down: false, jumpHeld: true, jumpPressed: true }
+  return {
+    left: false,
+    right: false,
+    down: false,
+    jumpHeld: true,
+    jumpPressed: true,
+  }
 }
 
 function rightInput() {
-  return { left: false, right: true, down: false, jumpHeld: false, jumpPressed: false }
+  return {
+    left: false,
+    right: true,
+    down: false,
+    jumpHeld: false,
+    jumpPressed: false,
+  }
 }
 
 function makeStage(spawnY, fallY, checkpoints) {
@@ -150,11 +168,20 @@ describe('Parkour physics — FB-2', () => {
     // but not enough to fall from respawn position (y≈258) to fallY again.
     const deathEvents = []
     for (let i = 0; i < 30; i++) {
-      const events = updatePlayer(player, stillInput(), DT, stage, platforms, [])
+      const events = updatePlayer(
+        player,
+        stillInput(),
+        DT,
+        stage,
+        platforms,
+        []
+      )
       deathEvents.push(...events)
     }
 
-    const fallDeath = deathEvents.find((e) => e.type === 'death' && e.cause === 'fall')
+    const fallDeath = deathEvents.find(
+      (e) => e.type === 'death' && e.cause === 'fall'
+    )
     expect(fallDeath).toBeTruthy()
     expect(fallDeath.checkpointId).toBe('cp-1')
 
@@ -166,8 +193,20 @@ describe('Parkour physics — FB-2', () => {
   it('hazard death respects invulnerability', () => {
     const stage = makeStage(300)
     const player = createPlayer('p1', { x: 100, y: 300 })
-    const platforms = [{ id: 'ground', type: 'solid', x: 0, y: 360, width: 400, height: 40 }]
-    const hazards = [{ id: 'haz-1', type: 'hazard', x: 80, y: 340, width: 60, height: 20, damage: 'death' }]
+    const platforms = [
+      { id: 'ground', type: 'solid', x: 0, y: 360, width: 400, height: 40 },
+    ]
+    const hazards = [
+      {
+        id: 'haz-1',
+        type: 'hazard',
+        x: 80,
+        y: 340,
+        width: 60,
+        height: 20,
+        damage: 'death',
+      },
+    ]
 
     // Land on ground
     for (let i = 0; i < 60; i++) {
@@ -176,14 +215,29 @@ describe('Parkour physics — FB-2', () => {
     expect(player.grounded).toBe(true)
 
     // Walk left into hazard
-    const leftInput = () => ({ left: true, right: false, down: false, jumpHeld: false, jumpPressed: false })
+    const leftInput = () => ({
+      left: true,
+      right: false,
+      down: false,
+      jumpHeld: false,
+      jumpPressed: false,
+    })
     let hazardEvents = []
     for (let i = 0; i < 10; i++) {
-      const events = updatePlayer(player, leftInput(), DT, stage, platforms, hazards)
+      const events = updatePlayer(
+        player,
+        leftInput(),
+        DT,
+        stage,
+        platforms,
+        hazards
+      )
       hazardEvents.push(...events)
     }
 
-    const hazardDeath = hazardEvents.find((e) => e.type === 'death' && e.cause === 'hazard')
+    const hazardDeath = hazardEvents.find(
+      (e) => e.type === 'death' && e.cause === 'hazard'
+    )
     expect(hazardDeath).toBeTruthy()
     expect(player.invulnerabilityTimer).toBeGreaterThan(0)
 
@@ -191,7 +245,14 @@ describe('Parkour physics — FB-2', () => {
     const deathCount = player.deaths
     let moreEvents = []
     for (let i = 0; i < 10; i++) {
-      const events = updatePlayer(player, leftInput(), DT, stage, platforms, hazards)
+      const events = updatePlayer(
+        player,
+        leftInput(),
+        DT,
+        stage,
+        platforms,
+        hazards
+      )
       moreEvents.push(...events)
     }
 
@@ -204,8 +265,16 @@ describe('Parkour moving & crumbling platforms — FB-3', () => {
   it('grounded player is carried by moving platform delta', () => {
     // An X-axis moving platform with speed & distance
     const platform = {
-      id: 'mp-1', type: 'moving', x: 100, y: 300, width: 120, height: 24,
-      axis: 'x', distance: 200, speed: 100, phase: 0,
+      id: 'mp-1',
+      type: 'moving',
+      x: 100,
+      y: 300,
+      width: 120,
+      height: 24,
+      axis: 'x',
+      distance: 200,
+      speed: 100,
+      phase: 0,
     }
 
     const state1 = getMovingPlatformState(platform, 3000, 1000 / 60)
@@ -226,8 +295,14 @@ describe('Parkour moving & crumbling platforms — FB-3', () => {
   it('crumbling timer starts only while occupied', () => {
     const cs = createCrumblingState()
     const platform = {
-      id: 'cr-1', type: 'crumbling', x: 100, y: 300, width: 120, height: 24,
-      crumbleAfterMs: 1000, respawnAfterMs: 2000,
+      id: 'cr-1',
+      type: 'crumbling',
+      x: 100,
+      y: 300,
+      width: 120,
+      height: 24,
+      crumbleAfterMs: 1000,
+      respawnAfterMs: 2000,
     }
     const player = createPlayer('p1', { x: 140, y: 200 })
     player.y = platform.y - player.height
@@ -252,8 +327,14 @@ describe('Parkour moving & crumbling platforms — FB-3', () => {
   it('crumbled platform does not collide', () => {
     const cs = createCrumblingState()
     const platform = {
-      id: 'cr-1', type: 'crumbling', x: 100, y: 300, width: 120, height: 24,
-      crumbleAfterMs: 100, respawnAfterMs: 2000,
+      id: 'cr-1',
+      type: 'crumbling',
+      x: 100,
+      y: 300,
+      width: 120,
+      height: 24,
+      crumbleAfterMs: 100,
+      respawnAfterMs: 2000,
     }
     const player = createPlayer('p1', { x: 140, y: 200 })
     player.y = platform.y - player.height
@@ -272,12 +353,23 @@ describe('Parkour moving & crumbling platforms — FB-3', () => {
     player.grounded = false
     player.vy = 100
 
-    const stage = { fallY: 9999, checkpoints: [], spawnPoints: { p1: { x: 0, y: 0 } }, finishZone: { x: 0, y: 0, width: 0, height: 0 } }
+    const stage = {
+      fallY: 9999,
+      checkpoints: [],
+      spawnPoints: { p1: { x: 0, y: 0 } },
+      finishZone: { x: 0, y: 0, width: 0, height: 0 },
+    }
     // Only pass active platforms
     const activePlatforms = [platform].filter((p) => isPlatformActive(p, cs))
 
     // Fall for multiple ticks to pass through where the platform was
-    const input = { left: false, right: false, down: false, jumpHeld: false, jumpPressed: false }
+    const input = {
+      left: false,
+      right: false,
+      down: false,
+      jumpHeld: false,
+      jumpPressed: false,
+    }
     for (let i = 0; i < 30; i++) {
       updatePlayer(player, input, 16.667, stage, activePlatforms, [])
     }
@@ -289,8 +381,14 @@ describe('Parkour moving & crumbling platforms — FB-3', () => {
   it('platform respawns after configured delay', () => {
     const cs = createCrumblingState()
     const platform = {
-      id: 'cr-1', type: 'crumbling', x: 100, y: 300, width: 120, height: 24,
-      crumbleAfterMs: 100, respawnAfterMs: 200,
+      id: 'cr-1',
+      type: 'crumbling',
+      x: 100,
+      y: 300,
+      width: 120,
+      height: 24,
+      crumbleAfterMs: 100,
+      respawnAfterMs: 200,
     }
     const player = createPlayer('p1', { x: 140, y: 200 })
     player.y = platform.y - player.height
@@ -315,27 +413,63 @@ describe('Parkour wall climbing — FB-4', () => {
   const DT = 1000 / 60
 
   function stillInput() {
-    return { left: false, right: false, down: false, jumpHeld: false, jumpPressed: false }
+    return {
+      left: false,
+      right: false,
+      down: false,
+      jumpHeld: false,
+      jumpPressed: false,
+    }
   }
 
   function leftInput() {
-    return { left: true, right: false, down: false, jumpHeld: false, jumpPressed: false }
+    return {
+      left: true,
+      right: false,
+      down: false,
+      jumpHeld: false,
+      jumpPressed: false,
+    }
   }
 
   function rightInput() {
-    return { left: false, right: true, down: false, jumpHeld: false, jumpPressed: false }
+    return {
+      left: false,
+      right: true,
+      down: false,
+      jumpHeld: false,
+      jumpPressed: false,
+    }
   }
 
   function jumpInput() {
-    return { left: false, right: false, down: false, jumpHeld: true, jumpPressed: true }
+    return {
+      left: false,
+      right: false,
+      down: false,
+      jumpHeld: true,
+      jumpPressed: true,
+    }
   }
 
   function leftJumpInput() {
-    return { left: true, right: false, down: false, jumpHeld: true, jumpPressed: true }
+    return {
+      left: true,
+      right: false,
+      down: false,
+      jumpHeld: true,
+      jumpPressed: true,
+    }
   }
 
   function rightJumpInput() {
-    return { left: false, right: true, down: false, jumpHeld: true, jumpPressed: true }
+    return {
+      left: false,
+      right: true,
+      down: false,
+      jumpHeld: true,
+      jumpPressed: true,
+    }
   }
 
   function makeStage() {
@@ -350,7 +484,14 @@ describe('Parkour wall climbing — FB-4', () => {
   it('player slides slowly down a wall when pressing into it', () => {
     const stage = makeStage()
     // Wall at x:50, width:40 (50 to 90). Player at x:92 (touching, not overlapping)
-    const wall = { id: 'wall', type: 'solid', x: 50, y: 0, width: 40, height: 400 }
+    const wall = {
+      id: 'wall',
+      type: 'solid',
+      x: 50,
+      y: 0,
+      width: 40,
+      height: 400,
+    }
     const player = createPlayer('p1', { x: 92, y: 100 })
 
     // Fall freely for a few frames — player should be airborne
@@ -376,7 +517,14 @@ describe('Parkour wall climbing — FB-4', () => {
   it('player pops away from wall on wall jump', () => {
     const stage = makeStage()
     // Wall at x:50, width:40. Player starts just to the right.
-    const wall = { id: 'wall', type: 'solid', x: 50, y: 0, width: 40, height: 400 }
+    const wall = {
+      id: 'wall',
+      type: 'solid',
+      x: 50,
+      y: 0,
+      width: 40,
+      height: 400,
+    }
     const player = createPlayer('p1', { x: 92, y: 50 })
 
     // Fall + press left into wall to initiate wall slide
@@ -405,7 +553,14 @@ describe('Parkour wall climbing — FB-4', () => {
   it('wall jump off right wall pushes left', () => {
     const stage = makeStage()
     // Wall at x:250, width:40 (250 to 290). Player starts to the left.
-    const wall = { id: 'wall', type: 'solid', x: 250, y: 0, width: 40, height: 400 }
+    const wall = {
+      id: 'wall',
+      type: 'solid',
+      x: 250,
+      y: 0,
+      width: 40,
+      height: 400,
+    }
     const player = createPlayer('p1', { x: 240, y: 50 })
 
     // Fall + press right into wall
@@ -432,8 +587,22 @@ describe('Parkour wall climbing — FB-4', () => {
   it('no wall slide when grounded', () => {
     const stage = makeStage()
     const player = createPlayer('p1', { x: 50, y: 180 })
-    const wall = { id: 'wall', type: 'solid', x: 30, y: 0, width: 40, height: 400 }
-    const ground = { id: 'ground', type: 'solid', x: 0, y: 220, width: 400, height: 40 }
+    const wall = {
+      id: 'wall',
+      type: 'solid',
+      x: 30,
+      y: 0,
+      width: 40,
+      height: 400,
+    }
+    const ground = {
+      id: 'ground',
+      type: 'solid',
+      x: 0,
+      y: 220,
+      width: 400,
+      height: 40,
+    }
 
     // Land on ground first
     for (let i = 0; i < 60; i++) {
@@ -449,7 +618,14 @@ describe('Parkour wall climbing — FB-4', () => {
   it('no wall slide when pressing away from wall', () => {
     const stage = makeStage()
     // Wall at x:50, width:40 (50 to 90). Player starts to the right at x:92.
-    const wall = { id: 'wall', type: 'solid', x: 50, y: 0, width: 40, height: 400 }
+    const wall = {
+      id: 'wall',
+      type: 'solid',
+      x: 50,
+      y: 0,
+      width: 40,
+      height: 400,
+    }
     const player = createPlayer('p1', { x: 92, y: 100 })
 
     // Fall for a bit then press RIGHT (away from the left wall, moving further right)
@@ -470,7 +646,14 @@ describe('Parkour wall climbing — FB-4', () => {
       spawnPoints: { p1: { x: 50, y: 500 }, p2: { x: 0, y: 0 } },
       finishZone: { x: 0, y: 0, width: 0, height: 0 },
     }
-    const wall = { id: 'wall', type: 'solid', x: 50, y: 0, width: 40, height: 400 }
+    const wall = {
+      id: 'wall',
+      type: 'solid',
+      x: 50,
+      y: 0,
+      width: 40,
+      height: 400,
+    }
     const player = createPlayer('p1', { x: 92, y: 50 })
     player.lastCheckpointId = 'cp-1'
 
@@ -494,11 +677,23 @@ describe('Parkour ledge grab — FB-4', () => {
   const DT = 1000 / 60
 
   function stillInput() {
-    return { left: false, right: false, down: false, jumpHeld: false, jumpPressed: false }
+    return {
+      left: false,
+      right: false,
+      down: false,
+      jumpHeld: false,
+      jumpPressed: false,
+    }
   }
 
   function jumpInput() {
-    return { left: false, right: false, down: false, jumpHeld: true, jumpPressed: true }
+    return {
+      left: false,
+      right: false,
+      down: false,
+      jumpHeld: true,
+      jumpPressed: true,
+    }
   }
 
   function makeStage() {
@@ -514,19 +709,33 @@ describe('Parkour ledge grab — FB-4', () => {
     const stage = makeStage()
     const player = createPlayer('p1', { x: 100, y: 300 })
     // Platform with player near its left edge
-    const platform = { id: 'plat', type: 'solid', x: 120, y: 220, width: 160, height: 24 }
+    const platform = {
+      id: 'plat',
+      type: 'solid',
+      x: 120,
+      y: 220,
+      width: 160,
+      height: 24,
+    }
 
     // Player is at x=100, width=28 → player covers x=100 to x=128
     // Platform left edge is at x=120, player right edge is at x=128
     // Player center = 114, which is within 28px of left edge 120 (center 114 < 120+28=148)
     // Player center 114 > platform left 120? No! 114 < 120.
     // So nearLeftEdge won't trigger...
-    // 
+    //
     // Let me adjust: player at x=110, center=124, width=28 → covers 110 to 138
     // Player center 124 > platform left 120? Yes. 124 < 120+28=148? Yes. So nearLeftEdge = true.
 
     // Actually let me just start with the player already on the ground and jump up to the platform
-    const ground = { id: 'ground', type: 'solid', x: 0, y: 360, width: 400, height: 40 }
+    const ground = {
+      id: 'ground',
+      type: 'solid',
+      x: 0,
+      y: 360,
+      width: 400,
+      height: 40,
+    }
 
     // Land on ground
     for (let i = 0; i < 60; i++) {
@@ -563,8 +772,22 @@ describe('Parkour ledge grab — FB-4', () => {
   it('player grabs ledge near the right edge of a platform', () => {
     const stage = makeStage()
     const player = createPlayer('p1', { x: 100, y: 300 })
-    const platform = { id: 'plat', type: 'solid', x: 120, y: 220, width: 160, height: 24 }
-    const ground = { id: 'ground', type: 'solid', x: 0, y: 360, width: 400, height: 40 }
+    const platform = {
+      id: 'plat',
+      type: 'solid',
+      x: 120,
+      y: 220,
+      width: 160,
+      height: 24,
+    }
+    const ground = {
+      id: 'ground',
+      type: 'solid',
+      x: 0,
+      y: 360,
+      width: 400,
+      height: 40,
+    }
 
     // Land on ground
     for (let i = 0; i < 60; i++) {
@@ -601,8 +824,22 @@ describe('Parkour ledge grab — FB-4', () => {
   it('player bumps head (no ledge grab) when not near edge', () => {
     const stage = makeStage()
     const player = createPlayer('p1', { x: 100, y: 300 })
-    const platform = { id: 'plat', type: 'solid', x: 120, y: 220, width: 160, height: 24 }
-    const ground = { id: 'ground', type: 'solid', x: 0, y: 360, width: 400, height: 40 }
+    const platform = {
+      id: 'plat',
+      type: 'solid',
+      x: 120,
+      y: 220,
+      width: 160,
+      height: 24,
+    }
+    const ground = {
+      id: 'ground',
+      type: 'solid',
+      x: 0,
+      y: 360,
+      width: 400,
+      height: 40,
+    }
 
     // Land on ground
     for (let i = 0; i < 60; i++) {
@@ -641,15 +878,33 @@ describe('Parkour passThrough teleportation fix', () => {
   const DT = 1000 / 60
 
   function stillInput() {
-    return { left: false, right: false, down: false, jumpHeld: false, jumpPressed: false }
+    return {
+      left: false,
+      right: false,
+      down: false,
+      jumpHeld: false,
+      jumpPressed: false,
+    }
   }
 
   function jumpInput() {
-    return { left: false, right: false, down: false, jumpHeld: true, jumpPressed: true }
+    return {
+      left: false,
+      right: false,
+      down: false,
+      jumpHeld: true,
+      jumpPressed: true,
+    }
   }
 
   function rightInput() {
-    return { left: false, right: true, down: false, jumpHeld: false, jumpPressed: false }
+    return {
+      left: false,
+      right: true,
+      down: false,
+      jumpHeld: false,
+      jumpPressed: false,
+    }
   }
 
   function makeStage() {
@@ -664,8 +919,23 @@ describe('Parkour passThrough teleportation fix', () => {
   it('jumping up through passThrough platform does not teleport sideways', () => {
     const stage = makeStage()
     // A wide passThrough ledge
-    const ledge = { id: 'ledge', type: 'solid', passThrough: true, x: 100, y: 300, width: 240, height: 24 }
-    const ground = { id: 'ground', type: 'solid', x: 0, y: 400, width: 400, height: 40 }
+    const ledge = {
+      id: 'ledge',
+      type: 'solid',
+      passThrough: true,
+      x: 100,
+      y: 300,
+      width: 240,
+      height: 24,
+    }
+    const ground = {
+      id: 'ground',
+      type: 'solid',
+      x: 0,
+      y: 400,
+      width: 400,
+      height: 40,
+    }
     const player = createPlayer('p1', { x: 180, y: 360 })
 
     // Land on ground
@@ -692,8 +962,23 @@ describe('Parkour passThrough teleportation fix', () => {
 
   it('jumping up through passThrough platform does not push to side when moving horizontally', () => {
     const stage = makeStage()
-    const ledge = { id: 'ledge', type: 'solid', passThrough: true, x: 100, y: 300, width: 240, height: 24 }
-    const ground = { id: 'ground', type: 'solid', x: 0, y: 400, width: 400, height: 40 }
+    const ledge = {
+      id: 'ledge',
+      type: 'solid',
+      passThrough: true,
+      x: 100,
+      y: 300,
+      width: 240,
+      height: 24,
+    }
+    const ground = {
+      id: 'ground',
+      type: 'solid',
+      x: 0,
+      y: 400,
+      width: 400,
+      height: 40,
+    }
     const player = createPlayer('p1', { x: 150, y: 360 })
 
     // Land on ground
@@ -706,13 +991,25 @@ describe('Parkour passThrough teleportation fix', () => {
 
     // Jump and hold right
     function rightJumpInput() {
-      return { left: false, right: true, down: false, jumpHeld: true, jumpPressed: true }
+      return {
+        left: false,
+        right: true,
+        down: false,
+        jumpHeld: true,
+        jumpPressed: true,
+      }
     }
 
     // Initiate jump and hold right for a few frames, then just hold right
     updatePlayer(player, rightJumpInput(), DT, stage, [ledge, ground], [])
     for (let i = 0; i < 10; i++) {
-      const rightHeld = { left: false, right: true, down: false, jumpHeld: false, jumpPressed: false }
+      const rightHeld = {
+        left: false,
+        right: true,
+        down: false,
+        jumpHeld: false,
+        jumpPressed: false,
+      }
       updatePlayer(player, rightHeld, DT, stage, [ledge, ground], [])
     }
 
@@ -727,29 +1024,260 @@ describe('Parkour passThrough teleportation fix', () => {
     // the player should have passed through (or be passing through) the ledge
     expect(player.y).toBeLessThan(310) // player's top is at or above ledge top
   })
+
+  it('player inside passThrough platform with vy >= 0 is not pushed right when pressing left/right', () => {
+    const stage = makeStage()
+    // Wide passThrough platform
+    const platform = {
+      id: 'ledge',
+      type: 'solid',
+      passThrough: true,
+      x: 100,
+      y: 300,
+      width: 240,
+      height: 24,
+    }
+    // Player starts inside the platform (vertically overlapping)
+    const player = createPlayer('p1', { x: 180, y: 290 })
+    // Player: x=180, y=290, w=28, h=40 → 180-208, 290-330
+    // Platform: x=100, y=300, w=240, h=24 → 100-340, 300-324
+    // Overlap: X(180-208 within 100-340 ✓), Y(290-330 overlaps 300-324 ✓)
+    player.vy = 0
+    player.grounded = false
+
+    const xBefore = player.x
+    const rightHeld = {
+      left: false,
+      right: true,
+      down: false,
+      jumpHeld: false,
+      jumpPressed: false,
+    }
+
+    for (let i = 0; i < 10; i++) {
+      updatePlayer(player, rightHeld, DT, stage, [platform], [])
+    }
+
+    // WITHOUT fix: player gets pushed to platform.x - player.width = 100 - 28 = 72
+    // WITH fix: player stays within platform bounds
+    expect(player.x).toBeGreaterThanOrEqual(platform.x) // not pushed left of platform
+    expect(player.x).toBeGreaterThan(xBefore) // moved right naturally
+  })
+
+  it('player inside passThrough platform with vy >= 0 is not pushed left when pressing left', () => {
+    const stage = makeStage()
+    const platform = {
+      id: 'ledge',
+      type: 'solid',
+      passThrough: true,
+      x: 100,
+      y: 300,
+      width: 240,
+      height: 24,
+    }
+    const player = createPlayer('p1', { x: 220, y: 290 })
+    // Player inside platform, vy >= 0
+    player.vy = 0
+    player.grounded = false
+
+    const xBefore = player.x
+    const leftHeld = {
+      left: true,
+      right: false,
+      down: false,
+      jumpHeld: false,
+      jumpPressed: false,
+    }
+
+    for (let i = 0; i < 10; i++) {
+      updatePlayer(player, leftHeld, DT, stage, [platform], [])
+    }
+
+    // WITHOUT fix: player gets pushed to platform.x + platform.width = 100 + 240 = 340
+    // WITH fix: player stays within platform bounds
+    expect(player.x + player.width).toBeLessThanOrEqual(
+      platform.x + platform.width
+    )
+    expect(player.x).toBeLessThan(xBefore) // moved left naturally
+  })
+
+  it('player standing on top of passThrough platform can move horizontally without teleport', () => {
+    const stage = makeStage()
+    const platform = {
+      id: 'ledge',
+      type: 'solid',
+      passThrough: true,
+      x: 100,
+      y: 300,
+      width: 240,
+      height: 24,
+    }
+    const player = createPlayer('p1', { x: 180, y: 200 })
+
+    // Fall onto platform
+    for (let i = 0; i < 60; i++) {
+      updatePlayer(player, stillInput(), DT, stage, [platform], [])
+    }
+    expect(player.grounded).toBe(true)
+    expect(player.y).toBe(260) // 300 - 40
+
+    const xBefore = player.x
+    const rightHeld = {
+      left: false,
+      right: true,
+      down: false,
+      jumpHeld: false,
+      jumpPressed: false,
+    }
+
+    for (let i = 0; i < 10; i++) {
+      updatePlayer(player, rightHeld, DT, stage, [platform], [])
+    }
+
+    // Player should have moved right (not teleported)
+    expect(player.x).toBeGreaterThan(xBefore)
+    // Player should still be grounded on top
+    expect(player.grounded).toBe(true)
+    expect(player.y).toBe(260)
+  })
+
+  it('dropping through a passThrough platform while holding left/right does not teleport', () => {
+    const stage = makeStage()
+    const platform = {
+      id: 'ledge',
+      type: 'solid',
+      passThrough: true,
+      x: 100,
+      y: 300,
+      width: 240,
+      height: 24,
+    }
+    const player = createPlayer('p1', { x: 200, y: 200 })
+
+    // Fall onto the platform
+    for (let i = 0; i < 60; i++) {
+      updatePlayer(player, stillInput(), DT, stage, [platform], [])
+    }
+    expect(player.grounded).toBe(true)
+    expect(player.y).toBe(260) // 300 - 40
+    expect(player.standingOnId).toBe('ledge')
+
+    const xBefore = player.x
+
+    // Hold down+right: triggers drop-through then continues falling right
+    const downRightHeld = {
+      left: false,
+      right: true,
+      down: true,
+      jumpHeld: false,
+      jumpPressed: false,
+    }
+
+    for (let i = 0; i < 15; i++) {
+      updatePlayer(player, downRightHeld, DT, stage, [platform], [])
+    }
+
+    // WITHOUT fix: player gets pushed to platform.x - player.width = 72 on first frame
+    // WITH fix: player should move right naturally
+    expect(player.x).toBeGreaterThan(platform.x) // not pushed left of platform
+    expect(player.x).toBeGreaterThan(xBefore) // moved right naturally
+    // Player should have fallen through the platform
+    expect(player.y).toBeGreaterThan(platform.y)
+  })
+
+  it('passThrough moving platform does not push player sideways', () => {
+    const stage = makeStage()
+    // Moving platform marked as passThrough
+    const movingPlatform = {
+      id: 'moving',
+      type: 'moving',
+      passThrough: true,
+      x: 100,
+      y: 300,
+      width: 200,
+      height: 24,
+      axis: 'x',
+      distance: 100,
+      speed: 60,
+      phase: 0,
+    }
+    const player = createPlayer('p1', { x: 150, y: 290 })
+    player.vy = 0
+    player.grounded = false
+
+    const rightHeld = {
+      left: false,
+      right: true,
+      down: false,
+      jumpHeld: false,
+      jumpPressed: false,
+    }
+    const xBefore = player.x
+
+    for (let i = 0; i < 10; i++) {
+      updatePlayer(player, rightHeld, DT, stage, [movingPlatform], [])
+    }
+
+    // Player should not be pushed to the edge of the moving platform
+    expect(player.x).toBeGreaterThanOrEqual(movingPlatform.x - player.width)
+    expect(player.x + player.width).toBeLessThanOrEqual(
+      movingPlatform.x + movingPlatform.width + player.width
+    )
+    expect(player.x).toBeGreaterThan(xBefore) // moved right naturally
+  })
 })
 
 describe('Parkour climb mechanic', () => {
   const DT = 1000 / 60
 
   function stillInput() {
-    return { left: false, right: false, down: false, jumpHeld: false, jumpPressed: false }
+    return {
+      left: false,
+      right: false,
+      down: false,
+      jumpHeld: false,
+      jumpPressed: false,
+    }
   }
 
   function leftInput() {
-    return { left: true, right: false, down: false, jumpHeld: false, jumpPressed: false }
+    return {
+      left: true,
+      right: false,
+      down: false,
+      jumpHeld: false,
+      jumpPressed: false,
+    }
   }
 
   function rightInput() {
-    return { left: false, right: true, down: false, jumpHeld: false, jumpPressed: false }
+    return {
+      left: false,
+      right: true,
+      down: false,
+      jumpHeld: false,
+      jumpPressed: false,
+    }
   }
 
   function leftJumpInput() {
-    return { left: true, right: false, down: false, jumpHeld: true, jumpPressed: true }
+    return {
+      left: true,
+      right: false,
+      down: false,
+      jumpHeld: true,
+      jumpPressed: true,
+    }
   }
 
   function rightJumpInput() {
-    return { left: false, right: true, down: false, jumpHeld: true, jumpPressed: true }
+    return {
+      left: false,
+      right: true,
+      down: false,
+      jumpHeld: true,
+      jumpPressed: true,
+    }
   }
 
   function makeStage() {
@@ -832,8 +1360,22 @@ describe('Parkour climb mechanic', () => {
   it('player climbs onto platform instead of wall-jumping when top is within reach', () => {
     const stage = makeStage()
     // A wall-like platform whose top is near the player's peak jump height
-    const wall = { id: 'wall', type: 'solid', x: 200, y: 275, width: 40, height: 200 }
-    const ground = { id: 'ground', type: 'solid', x: 0, y: 460, width: 400, height: 40 }
+    const wall = {
+      id: 'wall',
+      type: 'solid',
+      x: 200,
+      y: 275,
+      width: 40,
+      height: 200,
+    }
+    const ground = {
+      id: 'ground',
+      type: 'solid',
+      x: 0,
+      y: 460,
+      width: 400,
+      height: 40,
+    }
     const player = createPlayer('p1', { x: 280, y: 300 })
 
     // Land on ground first (player.y ≈ 460 - 40 = 420, head at 420)
@@ -843,11 +1385,23 @@ describe('Parkour climb mechanic', () => {
     expect(player.grounded).toBe(true)
 
     // Jump up and hold left to move toward the wall
-    const leftJump = { left: true, right: false, down: false, jumpHeld: true, jumpPressed: true }
+    const leftJump = {
+      left: true,
+      right: false,
+      down: false,
+      jumpHeld: true,
+      jumpPressed: true,
+    }
     updatePlayer(player, leftJump, DT, stage, [wall, ground], [])
 
     // Hold left while airborne — player moves left and hits the wall
-    const leftHeld = { left: true, right: false, down: false, jumpHeld: false, jumpPressed: false }
+    const leftHeld = {
+      left: true,
+      right: false,
+      down: false,
+      jumpHeld: false,
+      jumpPressed: false,
+    }
     for (let i = 0; i < 30; i++) {
       updatePlayer(player, leftHeld, DT, stage, [wall, ground], [])
     }
@@ -888,7 +1442,14 @@ describe('Parkour climb mechanic', () => {
   it('player wall-jumps instead of climbing when platform top is far above', () => {
     const stage = makeStage()
     // A tall wall where the top is far above the player
-    const wall = { id: 'wall', type: 'solid', x: 50, y: 0, width: 40, height: 400 }
+    const wall = {
+      id: 'wall',
+      type: 'solid',
+      x: 50,
+      y: 0,
+      width: 40,
+      height: 400,
+    }
     const player = createPlayer('p1', { x: 92, y: 100 })
 
     // Fall + press left into wall to initiate wall slide

@@ -51,7 +51,8 @@ export function updatePlayer(player, input, dt, stage, platforms, hazards) {
     const t = Math.min(1, player.climbTimer / player.climbDuration)
     // Ease out quad — decelerates toward the top for a natural feel
     const eased = 1 - (1 - t) * (1 - t)
-    player.y = player.climbStartY + (player.climbTargetY - player.climbStartY) * eased
+    player.y =
+      player.climbStartY + (player.climbTargetY - player.climbStartY) * eased
     player.vy = 0
 
     if (t >= 1) {
@@ -67,7 +68,11 @@ export function updatePlayer(player, input, dt, stage, platforms, hazards) {
     player.jumpBufferTimer = Math.max(0, player.jumpBufferTimer - dt)
     player.invulnerabilityTimer = Math.max(0, player.invulnerabilityTimer - dt)
     if (player.y > stage.fallY) {
-      events.push({ type: 'death', cause: 'fall', checkpointId: player.lastCheckpointId })
+      events.push({
+        type: 'death',
+        cause: 'fall',
+        checkpointId: player.lastCheckpointId,
+      })
       if (player.lastCheckpointId) {
         respawnAtCheckpoint(player, stage.checkpoints)
       } else {
@@ -185,8 +190,7 @@ export function updatePlayer(player, input, dt, stage, platforms, hazards) {
       if (player.y > platform.y + platform.height + 120) continue
 
       const nearLeftEdge =
-        playerCenterX > platform.x &&
-        playerCenterX < platform.x + proxThreshold
+        playerCenterX > platform.x && playerCenterX < platform.x + proxThreshold
       const nearRightEdge =
         playerCenterX < platform.x + platform.width &&
         playerCenterX > platform.x + platform.width - proxThreshold
@@ -223,7 +227,10 @@ export function updatePlayer(player, input, dt, stage, platforms, hazards) {
   }
 
   // --- Buffered jump (grounded or coyote) ---
-  if (player.jumpBufferTimer > 0 && (player.grounded || player.groundedTimer < COYOTE_TIME_MS)) {
+  if (
+    player.jumpBufferTimer > 0 &&
+    (player.grounded || player.groundedTimer < COYOTE_TIME_MS)
+  ) {
     player.vy = JUMP_VELOCITY
     player.grounded = false
     player.groundedTimer = COYOTE_TIME_MS + 1
@@ -250,7 +257,10 @@ export function updatePlayer(player, input, dt, stage, platforms, hazards) {
       player.grounded = false
     } else {
       // Normal wall jump
-      const awayX = player.wallSlide === 'right' ? -WALL_JUMP_VELOCITY_X : WALL_JUMP_VELOCITY_X
+      const awayX =
+        player.wallSlide === 'right'
+          ? -WALL_JUMP_VELOCITY_X
+          : WALL_JUMP_VELOCITY_X
       player.vx = awayX
       player.vy = WALL_JUMP_VELOCITY_Y
       player.wallSlide = null
@@ -260,7 +270,11 @@ export function updatePlayer(player, input, dt, stage, platforms, hazards) {
 
   // --- Fall death ---
   if (player.y > stage.fallY) {
-    events.push({ type: 'death', cause: 'fall', checkpointId: player.lastCheckpointId })
+    events.push({
+      type: 'death',
+      cause: 'fall',
+      checkpointId: player.lastCheckpointId,
+    })
     if (player.lastCheckpointId) {
       respawnAtCheckpoint(player, stage.checkpoints)
     } else {
@@ -298,11 +312,12 @@ function resolveCollisionAxis(player, platforms) {
   for (const platform of platforms) {
     if (!aabbOverlap(player, platform)) continue
 
-    // Skip passThrough platforms when the player is moving upward.
-    // This prevents X-collision from pushing the player sideways when
-    // jumping up through pass-through platforms (ledge penetration issue).
-    // The Y collision pass handles head-bumping correctly.
-    if (platform.passThrough && player.vy < 0) continue
+    // Skip passThrough platforms entirely for X collision.
+    // Pass-through platforms should only interact on the Y axis
+    // (landing on top or passing through). Without this skip,
+    // pressing left/right while inside a passThrough platform
+    // would teleport the player to the platform's edge.
+    if (platform.passThrough) continue
 
     if (player.vx > 0) {
       player.x = platform.x - player.width
@@ -420,7 +435,10 @@ export function getMovingPlatformOffset(platform, stageTimeMs) {
  */
 export function getMovingPlatformState(platform, stageTimeMs, dt) {
   const currOffset = getMovingPlatformOffset(platform, stageTimeMs)
-  const prevOffset = getMovingPlatformOffset(platform, Math.max(0, stageTimeMs - dt))
+  const prevOffset = getMovingPlatformOffset(
+    platform,
+    Math.max(0, stageTimeMs - dt)
+  )
 
   const currX = platform.x + (platform.axis === 'x' ? currOffset : 0)
   const currY = platform.y + (platform.axis === 'y' ? currOffset : 0)
@@ -464,7 +482,12 @@ export function createCrumblingState() {
  * Once crumbleTimer >= crumbleAfterMs the platform becomes inactive.
  * After respawnAfterMs it becomes active again.
  */
-export function updateCrumblingTimers(crumblingState, crumblingPlatforms, players, dt) {
+export function updateCrumblingTimers(
+  crumblingState,
+  crumblingPlatforms,
+  players,
+  dt
+) {
   for (const platform of crumblingPlatforms) {
     let state = crumblingState[platform.id]
     if (!state) {
@@ -481,7 +504,7 @@ export function updateCrumblingTimers(crumblingState, crumblingPlatforms, player
           p.grounded &&
           p.x < platform.x + platform.width &&
           p.x + p.width > platform.x &&
-          Math.abs(p.y + p.height - platform.y) < 2,
+          Math.abs(p.y + p.height - platform.y) < 2
       )
       if (occupied) {
         state.crumbleTimer += dt
@@ -532,15 +555,19 @@ export function findWallPlatform(player, platforms, wallSlide) {
   for (const platform of platforms) {
     // Check horizontal alignment based on wall slide direction
     if (wallSlide === 'left') {
-      if (Math.abs(player.x - (platform.x + platform.width)) > tolerance) continue
+      if (Math.abs(player.x - (platform.x + platform.width)) > tolerance)
+        continue
     } else if (wallSlide === 'right') {
-      if (Math.abs((player.x + player.width) - platform.x) > tolerance) continue
+      if (Math.abs(player.x + player.width - platform.x) > tolerance) continue
     } else {
       continue
     }
 
     // Check vertical overlap (player must be touching the platform's side)
-    if (player.y < platform.y + platform.height && player.y + player.height > platform.y) {
+    if (
+      player.y < platform.y + platform.height &&
+      player.y + player.height > platform.y
+    ) {
       return platform
     }
   }
@@ -556,5 +583,5 @@ export function findWallPlatform(player, platforms, wallSlide) {
  * @returns {boolean}
  */
 export function canClimbPlatform(player, wallPlatform) {
-  return (player.y - wallPlatform.y) < CLIMB_HEIGHT
+  return player.y - wallPlatform.y < CLIMB_HEIGHT
 }
