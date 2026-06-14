@@ -45,7 +45,6 @@ coverage/
 # Personal / project notes
 
 .code-review-graph/
+
+# Editor / agent IDE configuration
 .mimocode/
-
-
-
