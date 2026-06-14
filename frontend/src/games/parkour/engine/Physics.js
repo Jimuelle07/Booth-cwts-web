@@ -44,6 +44,15 @@ export function updatePlayer(player, input, dt, stage, platforms, hazards) {
   player.jumpBufferTimer = Math.max(0, player.jumpBufferTimer - dt)
   player.invulnerabilityTimer = Math.max(0, player.invulnerabilityTimer - dt)
 
+  // --- Drop through ---
+  if (input.down && player.grounded && player.standingOnId) {
+    player.dropThroughId = player.standingOnId
+    player.y += 2
+    player.grounded = false
+  } else if (!input.down) {
+    player.dropThroughId = null
+  }
+
   // --- Horizontal input ---
   if (input.left) {
     player.vx = -HORIZONTAL_SPEED
@@ -138,12 +147,18 @@ function resolveCollisionAxis(player, platforms, axis) {
     } else {
       // axis === 'y'
       if (player.vy > 0) {
-        // Landing on top
+        // Falling — only land on top if not drop-through
+        if (platform.passThrough && player.dropThroughId === platform.id) continue
+        if (platform.passThrough) {
+          const feetY = player.y + player.height
+          if (feetY - player.vy * (1 / 60) > platform.y + 4) continue
+        }
         player.y = platform.y - player.height
         player.vy = 0
         player.grounded = true
+        player.standingOnId = platform.id
       } else if (player.vy < 0) {
-        // Hitting ceiling
+        if (platform.passThrough) continue
         player.y = platform.y + platform.height
         player.vy = 0
       }

@@ -18,6 +18,8 @@ export function createPlayer(playerId, spawnPoint) {
     lastCheckpointY: spawnPoint.y,
     deaths: 0,
     finished: false,
+    dropThroughId: null,
+    standingOnId: null,
   }
 }
 
