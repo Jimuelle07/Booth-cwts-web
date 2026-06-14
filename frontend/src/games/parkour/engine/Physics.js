@@ -84,7 +84,7 @@ export function updatePlayer(player, input, dt, stage, platforms, hazards) {
   player.y += player.vy * dtSec
   const groundedBefore = player.grounded
   player.grounded = false
-  resolveCollisionAxis(player, platforms, 'y')
+  resolveCollisionAxisY(player, platforms, dtSec)
 
   // --- Coyote time ---
   // If player was grounded this frame, reset the grounded timer
@@ -137,31 +137,39 @@ function resolveCollisionAxis(player, platforms, axis) {
   for (const platform of platforms) {
     if (!aabbOverlap(player, platform)) continue
 
-    if (axis === 'x') {
-      if (player.vx > 0) {
-        player.x = platform.x - player.width
-      } else if (player.vx < 0) {
-        player.x = platform.x + platform.width
-      }
-      player.vx = 0
-    } else {
-      // axis === 'y'
-      if (player.vy > 0) {
-        // Falling — only land on top if not drop-through
-        if (platform.passThrough && player.dropThroughId === platform.id) continue
-        if (platform.passThrough) {
-          const feetY = player.y + player.height
-          if (feetY - player.vy * (1 / 60) > platform.y + 4) continue
+    if (player.vx > 0) {
+      player.x = platform.x - player.width
+    } else if (player.vx < 0) {
+      player.x = platform.x + platform.width
+    }
+    player.vx = 0
+  }
+}
+
+function resolveCollisionAxisY(player, platforms, dtSec) {
+  for (const platform of platforms) {
+    if (!aabbOverlap(player, platform)) continue
+
+    if (player.vy > 0) {
+      if (platform.passThrough && player.dropThroughId === platform.id) continue
+      if (platform.passThrough) {
+        const prevFeetY = player.y + player.height - player.vy * dtSec
+        if (prevFeetY <= platform.y) {
+          player.y = platform.y - player.height
+          player.vy = 0
+          player.grounded = true
+          player.standingOnId = platform.id
         }
-        player.y = platform.y - player.height
-        player.vy = 0
-        player.grounded = true
-        player.standingOnId = platform.id
-      } else if (player.vy < 0) {
-        if (platform.passThrough) continue
-        player.y = platform.y + platform.height
-        player.vy = 0
+        continue
       }
+      player.y = platform.y - player.height
+      player.vy = 0
+      player.grounded = true
+      player.standingOnId = platform.id
+    } else if (player.vy < 0) {
+      if (platform.passThrough) continue
+      player.y = platform.y + platform.height
+      player.vy = 0
     }
   }
 }
