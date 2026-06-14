@@ -27,7 +27,14 @@ export function renderFrame(renderer, players, stage, particleSystem) {
 
   drawBackground(ctx, camera, w, h, stage.background.theme)
   drawPlatforms(ctx, stage.platforms, camera, w, h)
-  drawMovingPlatforms(ctx, stage.movingPlatforms, camera, w, h, stage._raceTimeMs || 0)
+  drawMovingPlatforms(
+    ctx,
+    stage.movingPlatforms,
+    camera,
+    w,
+    h,
+    stage._raceTimeMs || 0
+  )
   drawCheckpoints(ctx, stage.checkpoints, camera, w, h)
   drawHazards(ctx, stage.hazards, camera, w, h)
   drawFinishZone(ctx, stage.finishZone, camera, w, h)
@@ -69,7 +76,12 @@ function drawBackground(ctx, camera, viewW, viewH, theme) {
 
   const t = themes[theme] || themes.greenfield
 
-  const skyGrad = ctx.createLinearGradient(camera.x, camera.y, camera.x, camera.y + viewH)
+  const skyGrad = ctx.createLinearGradient(
+    camera.x,
+    camera.y,
+    camera.x,
+    camera.y + viewH
+  )
   skyGrad.addColorStop(0, t.skyTop)
   skyGrad.addColorStop(1, t.skyBottom)
   ctx.fillStyle = skyGrad
@@ -78,14 +90,41 @@ function drawBackground(ctx, camera, viewW, viewH, theme) {
   const parallaxFar = 0.1
   const parallaxMid = 0.2
 
-  drawMountainLayer(ctx, camera, viewW, viewH, t.mountainFar, parallaxFar, 0.4, 120)
-  drawMountainLayer(ctx, camera, viewW, viewH, t.mountainMid, parallaxMid, 0.55, 80)
+  drawMountainLayer(
+    ctx,
+    camera,
+    viewW,
+    viewH,
+    t.mountainFar,
+    parallaxFar,
+    0.4,
+    120
+  )
+  drawMountainLayer(
+    ctx,
+    camera,
+    viewW,
+    viewH,
+    t.mountainMid,
+    parallaxMid,
+    0.55,
+    80
+  )
 
   ctx.fillStyle = t.ground
   ctx.fillRect(camera.x, camera.y + viewH - 30, viewW, 30)
 }
 
-function drawMountainLayer(ctx, camera, viewW, viewH, color, parallax, heightFactor, baseY) {
+function drawMountainLayer(
+  ctx,
+  camera,
+  viewW,
+  viewH,
+  color,
+  parallax,
+  heightFactor,
+  baseY
+) {
   const offsetX = camera.x * parallax
 
   ctx.fillStyle = color
@@ -100,7 +139,7 @@ function drawMountainLayer(ctx, camera, viewW, viewH, color, parallax, heightFac
     const sx = i * segW - offsetX
     const peakH = baseY + Math.sin(i * 0.7) * 30 + Math.cos(i * 1.3) * 20
     ctx.lineTo(sx + segW / 2, camera.y + viewH - peakH * heightFactor)
-    ctx.lineTo(sx + segW, camera.y + viewH - (baseY * 0.6))
+    ctx.lineTo(sx + segW, camera.y + viewH - baseY * 0.6)
   }
 
   ctx.lineTo(camera.x + viewW, camera.y + viewH)
@@ -183,9 +222,21 @@ function drawCrumblingPlatform(ctx, p) {
   }
 }
 
-function drawMovingPlatforms(ctx, movingPlatforms, camera, viewW, viewH, raceTimeMs) {
+function drawMovingPlatforms(
+  ctx,
+  movingPlatforms,
+  camera,
+  viewW,
+  viewH,
+  raceTimeMs
+) {
   for (const mp of movingPlatforms) {
-    const offset = Math.sin((raceTimeMs / 1000) * mp.speed / (mp.distance || 1) * Math.PI * 2 + mp.phase) * (mp.distance / 2)
+    const offset =
+      Math.sin(
+        (((raceTimeMs / 1000) * mp.speed) / (mp.distance || 1)) * Math.PI * 2 +
+          mp.phase
+      ) *
+      (mp.distance / 2)
     const mx = mp.x + (mp.axis === 'x' ? offset : 0)
     const my = mp.y + (mp.axis === 'y' ? offset : 0)
     const moved = { x: mx, y: my, width: mp.width, height: mp.height }
@@ -312,17 +363,64 @@ function drawPlayers(ctx, players, camera, viewW, viewH) {
 
     const isP1 = player.id === 'p1'
     const bodyColor = isP1 ? '#3498db' : '#e74c3c'
+    const brightColor = isP1 ? '#5dade2' : '#f1948a'
     const darkColor = isP1 ? '#2980b9' : '#c0392b'
 
-    if (player.invulnerabilityTimer > 0 && Math.floor(player.invulnerabilityTimer / 100) % 2 === 0) {
+    if (
+      player.invulnerabilityTimer > 0 &&
+      Math.floor(player.invulnerabilityTimer / 100) % 2 === 0
+    ) {
       ctx.globalAlpha = 0.4
+    }
+
+    // --- Grab low-time pulse warning ---
+    let effectiveBodyColor = bodyColor
+    if (
+      player.grabbing &&
+      player.grabHangDuration > 0 &&
+      player.grabHangTimer > player.grabHangDuration - 1000
+    ) {
+      const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.02) // ~300ms cycle
+      // Interpolate between normal and bright
+      effectiveBodyColor = isP1 ? '#3498db' : '#e74c3c'
+      if (pulse > 0.5) {
+        effectiveBodyColor = brightColor
+      }
     }
 
     ctx.fillStyle = darkColor
     ctx.fillRect(player.x + 2, player.y + 2, player.width, player.height)
 
-    ctx.fillStyle = bodyColor
+    ctx.fillStyle = effectiveBodyColor
     ctx.fillRect(player.x, player.y, player.width, player.height)
+
+    // --- Arm rectangles during grab ---
+    if (player.grabbing) {
+      if (player.grabType === 'edge-hang') {
+        // Arms extend upward from shoulders, gripping the platform edge
+        const armW = 6
+        const armH = 10
+        ctx.fillStyle = effectiveBodyColor
+        // Left arm
+        ctx.fillRect(player.x + 4, player.y - armH, armW, armH)
+        // Right arm
+        ctx.fillRect(player.x + player.width - 10, player.y - armH, armW, armH)
+      } else if (player.grabType === 'wall-cling') {
+        // Arms extend sideways toward the wall
+        const armW = 4
+        const armH = 6
+        ctx.fillStyle = effectiveBodyColor
+        if (player.grabSide === 'right') {
+          // Wall on right, arms extend right
+          ctx.fillRect(player.x + player.width, player.y + 12, armW, armH)
+          ctx.fillRect(player.x + player.width, player.y + 22, armW, armH)
+        } else {
+          // Wall on left, arms extend left
+          ctx.fillRect(player.x - armW, player.y + 12, armW, armH)
+          ctx.fillRect(player.x - armW, player.y + 22, armW, armH)
+        }
+      }
+    }
 
     ctx.fillStyle = '#ffffff'
     const eyeY = player.y + 10
@@ -337,15 +435,57 @@ function drawPlayers(ctx, players, camera, viewW, viewH) {
 
     ctx.fillStyle = '#2c3e50'
     const pupilSize = 2
+    // During edge-hang, pupils shift upward (looking toward climb target)
+    const pupilOffsetY = player.grabType === 'edge-hang' ? -1 : 1
     if (player.facingRight) {
-      ctx.fillRect(player.x + player.width - 9, eyeY + 1, pupilSize, pupilSize)
-      ctx.fillRect(player.x + player.width - 17, eyeY + 1, pupilSize, pupilSize)
+      ctx.fillRect(
+        player.x + player.width - 9,
+        eyeY + pupilOffsetY,
+        pupilSize,
+        pupilSize
+      )
+      ctx.fillRect(
+        player.x + player.width - 17,
+        eyeY + pupilOffsetY,
+        pupilSize,
+        pupilSize
+      )
     } else {
-      ctx.fillRect(player.x + 7, eyeY + 1, pupilSize, pupilSize)
-      ctx.fillRect(player.x + 15, eyeY + 1, pupilSize, pupilSize)
+      ctx.fillRect(player.x + 7, eyeY + pupilOffsetY, pupilSize, pupilSize)
+      ctx.fillRect(player.x + 15, eyeY + pupilOffsetY, pupilSize, pupilSize)
     }
 
     ctx.globalAlpha = 1.0
+
+    // --- Timer indicator bar above head ---
+    if (player.grabbing && player.grabHangDuration > 0) {
+      const barW = 20
+      const barH = 4
+      const barX = player.x + player.width / 2 - barW / 2
+      const barY = player.y - 14
+
+      const remaining = Math.max(
+        0,
+        player.grabHangDuration - player.grabHangTimer
+      )
+      const ratio = remaining / player.grabHangDuration
+
+      // Color: green (>66%) → yellow (33-66%) → red (<33%)
+      let timerColor = '#2ecc71' // green
+      if (ratio < 0.33) {
+        timerColor = '#e74c3c' // red
+      } else if (ratio < 0.66) {
+        timerColor = '#f1c40f' // yellow
+      }
+
+      // Background bar
+      ctx.fillStyle = '#333333'
+      ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2)
+
+      // Foreground bar
+      ctx.fillStyle = timerColor
+      ctx.fillRect(barX, barY, barW * ratio, barH)
+    }
   }
 }
 
@@ -359,7 +499,15 @@ function drawGrabIndicators(ctx, players, camera, viewW, viewH, now) {
     const ind = player.ledgeGrabIndicator
     const indicatorX = ind.edge === 'left' ? ind.x : ind.x + ind.width
 
-    if (!isOnScreen({ x: indicatorX, y: ind.y, width: 4, height: ind.height }, camera, viewW, viewH)) continue
+    if (
+      !isOnScreen(
+        { x: indicatorX, y: ind.y, width: 4, height: ind.height },
+        camera,
+        viewW,
+        viewH
+      )
+    )
+      continue
 
     // Pulsing glow — bright bar on the grabbable edge
     const pulse = 0.5 + 0.5 * Math.sin(now * 0.006)
@@ -391,7 +539,15 @@ function drawClimbIndicators(ctx, players, camera, viewW, viewH, now) {
     if (!player || !player.climbIndicator) continue
     const ind = player.climbIndicator
 
-    if (!isOnScreen({ x: ind.x, y: ind.y, width: ind.width, height: 6 }, camera, viewW, viewH)) continue
+    if (
+      !isOnScreen(
+        { x: ind.x, y: ind.y, width: ind.width, height: 6 },
+        camera,
+        viewW,
+        viewH
+      )
+    )
+      continue
 
     // Pulsing glow
     const pulse = 0.5 + 0.5 * Math.sin(now * 0.005 + 1)

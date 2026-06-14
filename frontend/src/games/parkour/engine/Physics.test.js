@@ -484,6 +484,7 @@ describe('Parkour wall climbing — FB-4', () => {
   it('player slides slowly down a wall when pressing into it', () => {
     const stage = makeStage()
     // Wall at x:50, width:40 (50 to 90). Player at x:92 (touching, not overlapping)
+    // Mark wall as non-grabbable to allow wall-slide instead of wall-cling
     const wall = {
       id: 'wall',
       type: 'solid',
@@ -491,6 +492,7 @@ describe('Parkour wall climbing — FB-4', () => {
       y: 0,
       width: 40,
       height: 400,
+      grabbable: false,
     }
     const player = createPlayer('p1', { x: 92, y: 100 })
 
@@ -517,6 +519,7 @@ describe('Parkour wall climbing — FB-4', () => {
   it('player pops away from wall on wall jump', () => {
     const stage = makeStage()
     // Wall at x:50, width:40. Player starts just to the right.
+    // Mark wall as non-grabbable to allow wall-slide instead of wall-cling
     const wall = {
       id: 'wall',
       type: 'solid',
@@ -524,6 +527,7 @@ describe('Parkour wall climbing — FB-4', () => {
       y: 0,
       width: 40,
       height: 400,
+      grabbable: false,
     }
     const player = createPlayer('p1', { x: 92, y: 50 })
 
@@ -553,6 +557,7 @@ describe('Parkour wall climbing — FB-4', () => {
   it('wall jump off right wall pushes left', () => {
     const stage = makeStage()
     // Wall at x:250, width:40 (250 to 290). Player starts to the left.
+    // Mark wall as non-grabbable to allow wall-slide instead of wall-cling
     const wall = {
       id: 'wall',
       type: 'solid',
@@ -560,6 +565,7 @@ describe('Parkour wall climbing — FB-4', () => {
       y: 0,
       width: 40,
       height: 400,
+      grabbable: false,
     }
     const player = createPlayer('p1', { x: 240, y: 50 })
 
@@ -653,6 +659,7 @@ describe('Parkour wall climbing — FB-4', () => {
       y: 0,
       width: 40,
       height: 400,
+      grabbable: false,
     }
     const player = createPlayer('p1', { x: 92, y: 50 })
     player.lastCheckpointId = 'cp-1'
@@ -1360,6 +1367,7 @@ describe('Parkour climb mechanic', () => {
   it('player climbs onto platform instead of wall-jumping when top is within reach', () => {
     const stage = makeStage()
     // A wall-like platform whose top is near the player's peak jump height
+    // Mark wall as non-grabbable to allow wall-slide instead of wall-cling
     const wall = {
       id: 'wall',
       type: 'solid',
@@ -1367,6 +1375,7 @@ describe('Parkour climb mechanic', () => {
       y: 275,
       width: 40,
       height: 200,
+      grabbable: false,
     }
     const ground = {
       id: 'ground',
@@ -1442,6 +1451,7 @@ describe('Parkour climb mechanic', () => {
   it('player wall-jumps instead of climbing when platform top is far above', () => {
     const stage = makeStage()
     // A tall wall where the top is far above the player
+    // Mark wall as non-grabbable to allow wall-slide instead of wall-cling
     const wall = {
       id: 'wall',
       type: 'solid',
@@ -1449,6 +1459,7 @@ describe('Parkour climb mechanic', () => {
       y: 0,
       width: 40,
       height: 400,
+      grabbable: false,
     }
     const player = createPlayer('p1', { x: 92, y: 100 })
 

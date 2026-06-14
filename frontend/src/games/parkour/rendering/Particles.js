@@ -49,6 +49,25 @@ export function updateParticles(particleSystem, dt) {
   }
 }
 
+export function emitGrabContactParticles(particleSystem, x, y) {
+  const colors = ['#ffffff', '#ffff00', '#ffd700', '#fff8c4']
+  const count = 4 + Math.floor(Math.random() * 3) // 4-6 particles
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2
+    const speed = 30 + Math.random() * 60
+    particleSystem.particles.push({
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 30,
+      life: 0.2 + Math.random() * 0.1,
+      maxLife: 0.2 + Math.random() * 0.1,
+      size: 2 + Math.random() * 1,
+      color: colors[Math.floor(Math.random() * colors.length)],
+    })
+  }
+}
+
 export function drawParticles(ctx, camera, particleSystem) {
   for (const p of particleSystem.particles) {
     const alpha = Math.max(0, p.life / p.maxLife)
