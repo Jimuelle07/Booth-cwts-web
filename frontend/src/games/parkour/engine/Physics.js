@@ -5,6 +5,10 @@ export const MAX_FALL_SPEED = 1200 // px/s
 export const COYOTE_TIME_MS = 80
 export const JUMP_BUFFER_MS = 100
 export const DEATH_RESPAWN_INVULNERABILITY_MS = 1000
+export const WALL_SLIDE_SPEED = 120 // px/s — reduced fall when wall sliding
+export const WALL_JUMP_VELOCITY_X = 280 // px/s — horizontal push away from wall
+export const WALL_JUMP_VELOCITY_Y = -650 // px/s — upward boost off the wall
+export const LEDGE_GRAB_THRESHOLD = 28 // px — max distance from platform edge for ledge grab
 
 import { respawnAtCheckpoint, respawnAtSpawn } from '../entities/Player.js'
 
@@ -78,7 +82,26 @@ export function updatePlayer(player, input, dt, stage, platforms, hazards) {
   // --- Discrete X then Y collision resolution ---
   // Move X
   player.x += player.vx * dtSec
-  resolveCollisionAxis(player, platforms, 'x')
+  const wallSlideResult = resolveCollisionAxis(player, platforms)
+
+  // --- Wall slide detection ---
+  // Wall slide when: not grounded, pressing into a wall, and falling (or stationary)
+  const pressingLeft = input.left && player.vx <= 0
+  const pressingRight = input.right && player.vx >= 0
+  if (!player.grounded && wallSlideResult) {
+    if (wallSlideResult === 'left' && pressingLeft) {
+      player.wallSlide = 'left'
+    } else if (wallSlideResult === 'right' && pressingRight) {
+      player.wallSlide = 'right'
+    } else if (wallSlideResult === 'left' || wallSlideResult === 'right') {
+      // Still touching wall but not pressing into it — keep slide briefly for coyote-style wall jump
+      if (player.wallSlide !== wallSlideResult) {
+        player.wallSlide = null
+      }
+    }
+  } else {
+    player.wallSlide = null
+  }
 
   // Move Y
   player.y += player.vy * dtSec
@@ -92,12 +115,27 @@ export function updatePlayer(player, input, dt, stage, platforms, hazards) {
     player.groundedTimer = 0
   }
 
-  // --- Buffered jump ---
+  // --- Wall slide speed cap ---
+  if (player.wallSlide && player.vy > WALL_SLIDE_SPEED) {
+    player.vy = WALL_SLIDE_SPEED
+  }
+
+  // --- Buffered jump (grounded or coyote) ---
   if (player.jumpBufferTimer > 0 && (player.grounded || player.groundedTimer < COYOTE_TIME_MS)) {
     player.vy = JUMP_VELOCITY
     player.grounded = false
-    // Exceed coyote threshold so it doesn't re-trigger on subsequent frames
     player.groundedTimer = COYOTE_TIME_MS + 1
+    player.jumpBufferTimer = 0
+    player.wallSlide = null
+  }
+
+  // --- Wall jump ---
+  // Only if grounded jump didn't fire
+  if (player.jumpBufferTimer > 0 && player.wallSlide) {
+    const awayX = player.wallSlide === 'right' ? -WALL_JUMP_VELOCITY_X : WALL_JUMP_VELOCITY_X
+    player.vx = awayX
+    player.vy = WALL_JUMP_VELOCITY_Y
+    player.wallSlide = null
     player.jumpBufferTimer = 0
   }
 
@@ -130,20 +168,28 @@ export function updatePlayer(player, input, dt, stage, platforms, hazards) {
 }
 
 /**
- * Resolve collisions along a single axis.
+ * Resolve collisions along the X axis.
  * Pushes the player out of any overlapping platforms.
+ * Returns 'left' or 'right' when the player is flush against a wall,
+ * or null if no wall contact.
  */
-function resolveCollisionAxis(player, platforms, axis) {
+function resolveCollisionAxis(player, platforms) {
+  let wallSide = null
+
   for (const platform of platforms) {
     if (!aabbOverlap(player, platform)) continue
 
     if (player.vx > 0) {
       player.x = platform.x - player.width
+      wallSide = 'right'
     } else if (player.vx < 0) {
       player.x = platform.x + platform.width
+      wallSide = 'left'
     }
     player.vx = 0
   }
+
+  return wallSide
 }
 
 function resolveCollisionAxisY(player, platforms, dtSec) {
@@ -168,6 +214,32 @@ function resolveCollisionAxisY(player, platforms, dtSec) {
       player.standingOnId = platform.id
     } else if (player.vy < 0) {
       if (platform.passThrough) continue
+
+      // --- Ledge grab / pull-up ---
+      // If the player was below the platform before this frame (jumping up into it)
+      // and is near a horizontal edge, snap on top instead of bumping head.
+      const prevFeetY = player.y + player.height - player.vy * dtSec
+      if (prevFeetY > platform.y) {
+        const playerCenterX = player.x + player.width / 2
+        const platformLeft = platform.x
+        const platformRight = platform.x + platform.width
+
+        const nearLeftEdge =
+          playerCenterX > platformLeft &&
+          playerCenterX < platformLeft + LEDGE_GRAB_THRESHOLD
+        const nearRightEdge =
+          playerCenterX < platformRight &&
+          playerCenterX > platformRight - LEDGE_GRAB_THRESHOLD
+
+        if (nearLeftEdge || nearRightEdge) {
+          player.y = platform.y - player.height
+          player.vy = 0
+          player.grounded = true
+          player.standingOnId = platform.id
+          continue
+        }
+      }
+
       player.y = platform.y + platform.height
       player.vy = 0
     }

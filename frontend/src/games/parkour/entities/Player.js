@@ -20,6 +20,7 @@ export function createPlayer(playerId, spawnPoint) {
     finished: false,
     dropThroughId: null,
     standingOnId: null,
+    wallSlide: null,
   }
 }
 
