@@ -48,8 +48,14 @@ export default function App() {
   const { player1, player2, currentPhase } = useGameStore()
 
   useEffect(() => {
-    const onKeyDown = (e) => pressedKeys.add(e.key)
-    const onKeyUp = (e) => pressedKeys.delete(e.key)
+    const onKeyDown = (e) => {
+      pressedKeys.add(e.key)
+      pressedKeys.add(e.code)
+    }
+    const onKeyUp = (e) => {
+      pressedKeys.delete(e.key)
+      pressedKeys.delete(e.code)
+    }
 
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('keyup', onKeyUp)
