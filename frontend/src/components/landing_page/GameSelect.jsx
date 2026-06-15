@@ -3,10 +3,10 @@ import { CHARACTERS } from './CharacterSelect'
 import AnimatedBackground from './AnimatedBackground'
 
 const GAMES = [
-  { id: 'pong', name: 'Pong', icon: 'sports_tennis', color: '#4A90D9' },
   { id: 'parkour', name: 'Parkour', icon: 'directions_run', color: '#27AE60' },
   { id: 'shooting', name: 'Shooting', icon: 'my_location', color: '#E03B1F' },
-  { id: 'tictactoe', name: 'Tic Tac Toe', icon: 'grid_3x3', color: '#9B59B6' },
+  { id: 'maze', name: 'Maze', icon: 'grid_view', color: '#6366f1' },
+  { id: 'bowling', name: 'Bowling', icon: 'adjust', color: '#D2691E' },
 ]
 
 export default function GameSelect() {
