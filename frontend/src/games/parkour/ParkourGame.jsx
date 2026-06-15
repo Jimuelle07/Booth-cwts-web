@@ -118,6 +118,30 @@ export default function ParkourGame({
 
     const currentStage = stages[getSnapshot().currentStageIndex] || stages[0]
     const camera = createCamera(currentStage.width, currentStage.height)
+
+    // Jump camera to player position so characters are visible immediately
+    const dpr = window.devicePixelRatio || 1
+    const viewW = canvas.width / dpr
+    const viewH = canvas.height / dpr
+    const snap = getSnapshot()
+    const targetPlayer = playerId === 'p1' ? snap.player1 : snap.player2
+    if (targetPlayer && viewW > 0 && viewH > 0) {
+      camera.x = Math.max(
+        0,
+        Math.min(
+          targetPlayer.x + targetPlayer.width / 2 - viewW / 2,
+          currentStage.width - viewW
+        )
+      )
+      camera.y = Math.max(
+        0,
+        Math.min(
+          targetPlayer.y + targetPlayer.height / 2 - viewH / 2,
+          currentStage.height - viewH
+        )
+      )
+    }
+
     cameraRef.current = camera
 
     const renderer = createRenderer(canvas, camera, playerId, currentStage)

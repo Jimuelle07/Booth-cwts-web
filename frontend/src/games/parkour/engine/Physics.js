@@ -137,6 +137,23 @@ export function updatePlayer(
       player.groundedTimer = 0
       player.standingOnId = player.climbWallPlatformId
       player.climbWallPlatformId = null
+
+      // Pull player horizontally onto the platform top.
+      // Without this, the player stays flush against the wall edge
+      // and aabbOverlap returns false (no horizontal overlap), so
+      // the next frame's Y-collision cannot re-ground the player.
+      const standingPlatform = getPlatformById(platforms, player.standingOnId)
+      if (standingPlatform) {
+        if (player.x < standingPlatform.x) {
+          player.x = standingPlatform.x + 1
+        } else if (
+          player.x + player.width >
+          standingPlatform.x + standingPlatform.width
+        ) {
+          player.x =
+            standingPlatform.x + standingPlatform.width - player.width - 1
+        }
+      }
     }
 
     // Still check death during climb (unlikely but safe)
@@ -178,8 +195,6 @@ export function updatePlayer(
       player._justGrabbed = false
       events.push({ type: 'grab', x: player.x + player.width / 2, y: player.y })
     }
-    const dtSec = dt / 1000
-
     // 1. Update hang timer
     player.grabHangTimer += dt
     const hangDuration = player.grabHangDuration
@@ -544,6 +559,7 @@ export function updatePlayer(
       player.climbStartY = player.y
       player.climbTargetY = wallPlatform.y - player.height
       player.climbTimer = 0
+      player.climbDuration = GRAB_CLIMB_DURATION
       player.climbWallPlatformId = wallPlatform.id
       player.wallSlide = null
       player.jumpBufferTimer = 0
@@ -721,6 +737,20 @@ function resolveCollisionAxisY(player, platforms, dtSec, input, phase) {
     if (player.vy > 0) {
       if (platform.passThrough && player.dropThroughId === platform.id) continue
 
+      // PassThrough: handle landing first, then skip all grab mechanics.
+      // This prevents edge-hang / underside-hang from stealing landings
+      // on passThrough platforms.
+      if (platform.passThrough) {
+        const prevFeetY = player.y + player.height - player.vy * dtSec
+        if (prevFeetY <= platform.y) {
+          player.y = platform.y - player.height
+          player.vy = 0
+          player.grounded = true
+          player.standingOnId = platform.id
+        }
+        continue
+      }
+
       // --- Edge-hang downward catch ---
       // Player falling + near edge + pressing toward platform center.
       // groundedTimer > 0 prevents catching on the first frame walking off
@@ -767,8 +797,11 @@ function resolveCollisionAxisY(player, platforms, dtSec, input, phase) {
       }
 
       // --- Underside-hang downward catch ---
-      // Player falling past the platform bottom (any position along width).
+      // Player falling past a THIN platform (ledge). Does not fire for
+      // thick platforms like the ground (height >= player.height) where
+      // normal landing is always preferred.
       if (
+        platform.height < player.height &&
         phase === 'racing' &&
         !player.grounded &&
         !player.grabbing &&
@@ -809,25 +842,19 @@ function resolveCollisionAxisY(player, platforms, dtSec, input, phase) {
         }
       }
 
-      if (platform.passThrough) {
-        const prevFeetY = player.y + player.height - player.vy * dtSec
-        if (prevFeetY <= platform.y) {
-          player.y = platform.y - player.height
-          player.vy = 0
-          player.grounded = true
-          player.standingOnId = platform.id
-        }
-        continue
-      }
       player.y = platform.y - player.height
       player.vy = 0
       player.grounded = true
       player.standingOnId = platform.id
     } else if (player.vy < 0) {
+      // PassThrough: skip all collision when jumping up through.
+      if (platform.passThrough) continue
+
       // --- Edge-hang upward detection ---
       // Player jumping up + near edge + pressing toward platform center.
       // groundedTimer > 0 prevents catching on the same frame as a jump
       // from the platform (where the player is still at platform-top height).
+      // Fires BEFORE ledge grab so deliberate toward-input edge hang takes priority.
       if (
         phase === 'racing' &&
         !player.grounded &&
@@ -869,11 +896,48 @@ function resolveCollisionAxisY(player, platforms, dtSec, input, phase) {
         }
       }
 
+      // --- Ledge grab / pull-up ---
+      // Fires after edge-hang above so deliberate edge-hang takes priority.
+      // Player was below the platform before this frame (jumping up into it)
+      // near a horizontal edge — snap on top instead of bumping.
+      const prevFeetYUp = player.y + player.height - player.vy * dtSec
+      if (prevFeetYUp > platform.y) {
+        const playerCenterX = player.x + player.width / 2
+        const platformLeft = platform.x
+        const platformRight = platform.x + platform.width
+
+        const nearLeftEdge =
+          playerCenterX > platformLeft &&
+          playerCenterX < platformLeft + LEDGE_GRAB_THRESHOLD
+        const nearRightEdge =
+          playerCenterX < platformRight &&
+          playerCenterX > platformRight - LEDGE_GRAB_THRESHOLD
+
+        if (nearLeftEdge || nearRightEdge) {
+          // Only set indicator if not already set (first platform wins)
+          if (!player.ledgeGrabIndicator) {
+            player.ledgeGrabIndicator = {
+              platformId: platform.id,
+              edge: nearLeftEdge ? 'left' : 'right',
+              x: platform.x,
+              y: platform.y,
+              width: platform.width,
+              height: platform.height,
+            }
+          }
+          player.y = platform.y - player.height
+          player.vy = 0
+          player.grounded = true
+          player.standingOnId = platform.id
+          continue
+        }
+      }
+
       // --- Underside-hang upward detection ---
-      // Player jumping up into the platform bottom (any position along width).
-      // No groundedTimer guard needed — walk-off can't trigger this (player
-      // walking off is on top of platform, not below it).
+      // Player jumping up into a THIN platform bottom from below.
+      // Does not fire for thick platforms (height >= player.height).
       if (
+        platform.height < player.height &&
         phase === 'racing' &&
         !player.grounded &&
         !player.grabbing &&
@@ -911,44 +975,6 @@ function resolveCollisionAxisY(player, platforms, dtSec, input, phase) {
             player._grabPlatformHeight = platform.height
             continue
           }
-        }
-      }
-
-      if (platform.passThrough) continue
-
-      // --- Ledge grab / pull-up ---
-      // If the player was below the platform before this frame (jumping up into it)
-      // and is near a horizontal edge, snap on top instead of bumping head.
-      const prevFeetY = player.y + player.height - player.vy * dtSec
-      if (prevFeetY > platform.y) {
-        const playerCenterX = player.x + player.width / 2
-        const platformLeft = platform.x
-        const platformRight = platform.x + platform.width
-
-        const nearLeftEdge =
-          playerCenterX > platformLeft &&
-          playerCenterX < platformLeft + LEDGE_GRAB_THRESHOLD
-        const nearRightEdge =
-          playerCenterX < platformRight &&
-          playerCenterX > platformRight - LEDGE_GRAB_THRESHOLD
-
-        if (nearLeftEdge || nearRightEdge) {
-          // Only set indicator if not already set (first platform wins)
-          if (!player.ledgeGrabIndicator) {
-            player.ledgeGrabIndicator = {
-              platformId: platform.id,
-              edge: nearLeftEdge ? 'left' : 'right',
-              x: platform.x,
-              y: platform.y,
-              width: platform.width,
-              height: platform.height,
-            }
-          }
-          player.y = platform.y - player.height
-          player.vy = 0
-          player.grounded = true
-          player.standingOnId = platform.id
-          continue
         }
       }
 
