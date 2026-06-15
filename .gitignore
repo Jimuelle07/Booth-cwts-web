@@ -44,7 +44,14 @@ coverage/
 
 # Personal / project notes
 
+<<<<<<< HEAD
 CLAUDE.md
 system_architecture.md
 .claude/
 .playwright-mcp/
+=======
+.code-review-graph/
+
+# Editor / agent IDE configuration
+.mimocode/
+>>>>>>> 1da60789f1808670eb9e978046b825104bf94aa7
