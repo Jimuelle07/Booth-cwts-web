@@ -44,3 +44,7 @@ coverage/
 
 # Personal / project notes
 
+CLAUDE.md
+system_architecture.md
+.claude/
+.playwright-mcp/
