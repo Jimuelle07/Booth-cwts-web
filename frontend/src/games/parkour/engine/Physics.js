@@ -236,8 +236,11 @@ export function updatePlayer(
     // 4. Climb-up or Wall-jump (if jump buffer available) — highest priority with jump
     if (player.jumpBufferTimer > 0) {
       player.jumpBufferTimer = 0
-      if (player.grabType === 'wall-cling' && awayFromWall) {
-        // Wall jump off cling
+      if (player.grabType === 'wall-cling') {
+        // Wall jump off cling (always wall-jump, never climb-up).
+        // Climbing up from a vertical wall can teleport the player
+        // above the stage (wall top at y=0 → climbTargetY = -playerHeight),
+        // which falsely triggers the finish zone → DNF for the other player.
         const awayX =
           player.grabSide === 'right'
             ? -WALL_JUMP_VELOCITY_X
@@ -251,7 +254,7 @@ export function updatePlayer(
         )
         return events
       } else {
-        // Climb up
+        // Climb up (edge-hang or underside-hang)
         const grabPlatform = getPlatformById(platforms, player.grabPlatformId)
         if (grabPlatform) {
           const depleted =
@@ -800,10 +803,14 @@ function resolveCollisionAxisY(player, platforms, dtSec, input, phase) {
       // Player falling past a THIN platform (ledge). Does not fire for
       // thick platforms like the ground (height >= player.height) where
       // normal landing is always preferred.
+      // groundedTimer > 0 prevents 0.5px gravity overlap from triggering
+      // underside-hang immediately after ledge grab / landing (same guard
+      // as edge-hang downward catch).
       if (
         platform.height < player.height &&
         phase === 'racing' &&
         !player.grounded &&
+        player.groundedTimer > 0 &&
         !player.grabbing &&
         !input.down &&
         isPlatformGrabbable(platform)
@@ -847,8 +854,16 @@ function resolveCollisionAxisY(player, platforms, dtSec, input, phase) {
       player.grounded = true
       player.standingOnId = platform.id
     } else if (player.vy < 0) {
-      // PassThrough: skip all collision when jumping up through.
-      if (platform.passThrough) continue
+      // For passThrough platforms, only allow grab detection near edges.
+      // In the center, the player should pass through without being caught.
+      if (platform.passThrough) {
+        const playerCenterX = player.x + player.width / 2
+        const { nearLeftEdge: nearLeft, nearRightEdge: nearRight } =
+          isNearPlatformEdge(playerCenterX, platform, GRAB_EDGE_DETECT_THRESHOLD)
+        if (!nearLeft && !nearRight) {
+          continue
+        }
+      }
 
       // --- Edge-hang upward detection ---
       // Player jumping up + near edge + pressing toward platform center.
@@ -977,6 +992,11 @@ function resolveCollisionAxisY(player, platforms, dtSec, input, phase) {
           }
         }
       }
+
+      // PassThrough: skip head-bump collision when jumping up through,
+      // but allow grab detection (edge-hang, ledge grab, underside-hang)
+      // to run first above.
+      if (platform.passThrough) continue
 
       player.y = platform.y + platform.height
       player.vy = 0

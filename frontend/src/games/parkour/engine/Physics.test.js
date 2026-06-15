@@ -753,12 +753,12 @@ describe('Parkour ledge grab — FB-4', () => {
     // Position player near the left edge of the platform above
     player.x = 110
 
-    // Initiate jump (1 frame), then coast upward — capture indicator on the grab frame
+    // Initiate jump (no horizontal input) — player stays near left edge.
+    // Ledge grab fires when near edge (no toward-input needed for auto-snap).
     let grabIndicator = null
     updatePlayer(player, jumpInput(), DT, stage, [platform, ground], [])
     for (let i = 0; i < 14; i++) {
       updatePlayer(player, stillInput(), DT, stage, [platform, ground], [])
-      // Capture indicator on the frame the player becomes grounded (grab happened)
       if (player.grounded && !grabIndicator) {
         grabIndicator = player.ledgeGrabIndicator
       }
@@ -808,7 +808,8 @@ describe('Parkour ledge grab — FB-4', () => {
     // center 272 < 280? Yes. center 272 > 252? Yes. ✓
     player.x = 258
 
-    // Initiate jump (1 frame), then coast upward — capture indicator on the grab frame
+    // Initiate jump (no horizontal input) — player stays near right edge.
+    // Ledge grab fires when near edge (no toward-input needed for auto-snap).
     let grabIndicator = null
     updatePlayer(player, jumpInput(), DT, stage, [platform, ground], [])
     for (let i = 0; i < 14; i++) {

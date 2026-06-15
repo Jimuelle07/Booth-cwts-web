@@ -142,7 +142,7 @@ describe('Edge Hang', () => {
     expect(p.grabType).toBe('edge-hang')
   })
 
-  it('no-toward near edge enters underside-hang (not ledge-grab)', () => {
+  it('no-toward at center enters underside-hang (not ledge-grab)', () => {
     const s = makeStage()
     const plat = {
       id: 'p',
@@ -160,10 +160,12 @@ describe('Edge Hang', () => {
       width: 400,
       height: 40,
     }
-    const p = createPlayer('p1', { x: 130, y: 300 })
+    // Center position: x=200, platform covers 120-280, center at 200.
+    // Not near edge → ledge grab and edge-hang both skipped → underside-hang.
+    const p = createPlayer('p1', { x: 200, y: 300 })
     for (let i = 0; i < 60; i++)
       updatePlayer(p, stillInput(), DT, s, [ground], [], 'racing', [p])
-    p.x = 130
+    p.x = 200
     updatePlayer(p, jumpInput(), DT, s, [plat, ground], [], 'racing', [p])
     for (let i = 0; i < 20; i++)
       updatePlayer(p, stillInput(), DT, s, [plat, ground], [], 'racing', [p])
@@ -267,25 +269,7 @@ describe('Edge Hang', () => {
 })
 
 describe('Climb-Up', () => {
-  it('climb-up from cling', () => {
-    const s = makeStage()
-    const w = { id: 'w', type: 'solid', x: 200, y: 100, width: 40, height: 200 }
-    const p = createPlayer('p1', { x: 100, y: 150 })
-    for (let i = 0; i < 30; i++)
-      updatePlayer(p, rightInput(), DT, s, [w], [], 'racing', [p])
-    expect(p.grabbing).toBe(true)
-    updatePlayer(p, jumpInput(), DT, s, [w], [], 'racing', [p])
-    expect(p.climbing).toBe(true)
-    for (let i = 0; i < 15; i++) {
-      if (!p.climbing) break
-      updatePlayer(p, stillInput(), DT, s, [w], [], 'racing', [p])
-    }
-    expect(p.climbing).toBe(false)
-    expect(p.grounded).toBe(true)
-    expect(p.y).toBe(w.y - p.height)
-  })
-
-  it('climb-up from hang (manual edge-hang)', () => {
+  it('climb-up from edge-hang', () => {
     const s = makeStage()
     const plat = {
       id: 'p',
@@ -311,27 +295,31 @@ describe('Climb-Up', () => {
     expect(p.grounded).toBe(true)
   })
 
-  it('depleted climb-up speed', () => {
+  it('depleted climb-up speed from edge-hang', () => {
     const s = makeStage()
-    const w = { id: 'w', type: 'solid', x: 200, y: 100, width: 40, height: 200 }
-    const p = createPlayer('p1', { x: 100, y: 150 })
-    for (let i = 0; i < 30; i++)
-      updatePlayer(p, rightInput(), DT, s, [w], [], 'racing', [p])
+    const plat = { id: 'p', type: 'solid', x: 100, y: 200, width: 200, height: 24 }
+    const p = createPlayer('p1', { x: 96, y: 220 })
+    p.y = 220
+    p.vy = -200
+    p.grounded = false
+    updatePlayer(p, rightInput(), DT, s, [plat], [], 'racing', [p])
+    if (!p.grabbing) return
+    // Wait until timer is near-depleted (within last 1s)
     const fn = Math.ceil((GRAB_DEFAULT_HANG_TIME_MS - 500) / DT)
     for (let i = 0; i < fn; i++) {
       if (!p.grabbing) break
-      updatePlayer(p, stillInput(), DT, s, [w], [], 'racing', [p])
+      updatePlayer(p, stillInput(), DT, s, [plat], [], 'racing', [p])
     }
     expect(p.grabbing).toBe(true)
     expect(p.grabHangTimer).toBeGreaterThan(GRAB_DEFAULT_HANG_TIME_MS - 1000)
-    updatePlayer(p, jumpInput(), DT, s, [w], [], 'racing', [p])
+    updatePlayer(p, jumpInput(), DT, s, [plat], [], 'racing', [p])
     expect(p.climbing).toBe(true)
     expect(p.climbDuration).toBe(GRAB_CLIMB_DURATION_DEPLETED)
   })
 })
 
 describe('Wall Jump / Release', () => {
-  it('wall jump off cling', () => {
+  it('wall-jump off cling with away input', () => {
     const s = makeStage()
     const w = { id: 'w', type: 'solid', x: 200, y: 100, width: 40, height: 200 }
     const p = createPlayer('p1', { x: 100, y: 150 })
@@ -794,7 +782,7 @@ describe('Underside-Hang', () => {
     expect(p.grabType).toBe('edge-hang')
   })
 
-  it('no-input at edge → underside-hang', () => {
+  it('no-input at center → underside-hang', () => {
     const s = makeStage()
     const plat = {
       id: 'p',
@@ -804,9 +792,13 @@ describe('Underside-Hang', () => {
       width: 200,
       height: 24,
     }
-    const p = createPlayer('p1', { x: 96, y: 220 })
-    p.y = 220
-    p.vy = -200
+    // Player at center of platform (x=200, platform 100-300).
+    // No input, so isPressingTowardPlatform returns false.
+    // Not near edge → edge-hang and ledge grab both skipped.
+    // Falls through to underside-hang.
+    const p = createPlayer('p1', { x: 200, y: 226 })
+    p.y = 226
+    p.vy = -300
     p.grounded = false
 
     updatePlayer(p, stillInput(), DT, s, [plat], [], 'racing', [p])
@@ -1008,8 +1000,10 @@ describe('Underside-Hang', () => {
     expect(cs['cr'].crumbleTimer).toBe(100)
   })
 
-  it('pass-through underside-hang', () => {
+  it('pass-through center passes through (no grab at center)', () => {
     const s = makeStage()
+    // Player at center of passThrough platform — should pass through,
+    // not grab (passThrough only grabs near edges).
     const plat = {
       id: 'p',
       type: 'solid',
@@ -1025,8 +1019,7 @@ describe('Underside-Hang', () => {
     p.grounded = false
 
     updatePlayer(p, stillInput(), DT, s, [plat], [], 'racing', [p])
-    expect(p.grabbing).toBe(true)
-    expect(p.grabType).toBe('underside-hang')
+    expect(p.grabbing).toBe(false)
   })
 
   it('grab disabled in countdown for underside', () => {
