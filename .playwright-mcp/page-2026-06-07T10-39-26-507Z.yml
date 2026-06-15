@@ -1,9 +1,0 @@
-- generic [ref=e68]:
-  - generic [ref=e70]:
-    - generic [ref=e71]: Player 1
-    - combobox [ref=e72] [cursor=pointer]:
-      - option "Pong" [selected]
-  - generic [ref=e77]:
-    - generic [ref=e78]: Player 2
-    - combobox [ref=e79] [cursor=pointer]:
-      - option "Pong" [selected]

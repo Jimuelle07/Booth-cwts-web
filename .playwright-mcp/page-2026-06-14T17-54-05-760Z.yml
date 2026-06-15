@@ -1,7 +1,0 @@
-- generic [ref=e3]:
-  - generic [ref=e4]:
-    - heading "Booth." [level=1] [ref=e5]
-    - paragraph [ref=e6]: CWTS Gaming Platform
-    - paragraph [ref=e7]: 2-Player Local Multiplayer
-  - button "Play" [ref=e8] [cursor=pointer]
-  - paragraph [ref=e9]: "P1: WASD · G | P2: IJKL · '"
