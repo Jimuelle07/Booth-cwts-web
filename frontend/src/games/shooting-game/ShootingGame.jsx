@@ -325,15 +325,20 @@ export default function ShootingGame({ canvasId, player1, player2, pressedKeys }
       if (player === 1) setP1Diff(level);
       if (player === 2) setP2Diff(level);
     };
+    const handleStartSync = () => setIsPlaying(true);
     window.addEventListener('shooting-level-sync', handleSync);
-    return () => window.removeEventListener('shooting-level-sync', handleSync);
+    window.addEventListener('shooting-start-sync', handleStartSync);
+    return () => {
+      window.removeEventListener('shooting-level-sync', handleSync);
+      window.removeEventListener('shooting-start-sync', handleStartSync);
+    };
   }, []);
 
   const selectDifficulty = (level) => {
-    const pNumber = isLeftPanel ? 1 : 2;
-    window.dispatchEvent(new CustomEvent('shooting-level-sync', { detail: { player: pNumber, level } }));
-    if (isLeftPanel) setP1Diff(level);
-    else setP2Diff(level);
+    window.dispatchEvent(new CustomEvent('shooting-level-sync', { detail: { player: 1, level } }));
+    window.dispatchEvent(new CustomEvent('shooting-level-sync', { detail: { player: 2, level } }));
+    setP1Diff(level);
+    setP2Diff(level);
     // Play select beep (also inits AudioContext on first user click)
     if (audioRef.current) {
       audioRef.current.ensureContext()
@@ -357,7 +362,7 @@ export default function ShootingGame({ canvasId, player1, player2, pressedKeys }
       : ["'", '5']
     function checkShootKey() {
       for (const k of shootKeys) {
-        if (pressedKeys.has(k)) {
+        if (pressedKeys.has(k) || pressedKeys.has(k.toUpperCase())) {
           setIsPlaying(true)
           return
         }
@@ -416,12 +421,20 @@ export default function ShootingGame({ canvasId, player1, player2, pressedKeys }
         shootAlt2: '/',
       }
 
+    // Match a key regardless of Caps Lock / Shift: keydown reports `e.key` as
+    // 'W' instead of 'w' when caps is on, so check both cases (same defensive
+    // pattern the tug-of-war and bowling games already use).
+    function isKeyDown(key) {
+      if (!key) return false
+      return pressedKeys.has(key) || pressedKeys.has(key.toUpperCase()) || pressedKeys.has(key.toLowerCase())
+    }
+
     function isKeyPressed(action) {
-      if (pressedKeys.has(keys[action])) return true
-      const alt = keys[action + 'Alt']
-      if (alt && pressedKeys.has(alt)) return true
-      const alt2 = keys[action + 'Alt2']
-      return alt2 ? pressedKeys.has(alt2) : false
+      return (
+        isKeyDown(keys[action]) ||
+        isKeyDown(keys[action + 'Alt']) ||
+        isKeyDown(keys[action + 'Alt2'])
+      )
     }
 
     // ── Game state initialization ──
@@ -2393,7 +2406,10 @@ export default function ShootingGame({ canvasId, player1, player2, pressedKeys }
     ]
 
   function handleLaunch() {
-    if (bothAgreed) setIsPlaying(true)
+    if (bothAgreed) {
+      window.dispatchEvent(new CustomEvent('shooting-start-sync'));
+      setIsPlaying(true);
+    }
   }
 
   const handleMuteToggle = () => {
@@ -2469,24 +2485,23 @@ export default function ShootingGame({ canvasId, player1, player2, pressedKeys }
       )}
 
       {/* ── START MENU OVERLAY ── */}
-      {!isPlaying && (
+      {!isPlaying && isLeftPanel && (
         <div
           style={{
-            position: 'absolute',
+            position: 'fixed',
             inset: 0,
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            justifyContent: 'flex-start',
+            justifyContent: 'center',
             background: '#FDF6EC',
-            zIndex: 10,
+            zIndex: 100,
             fontFamily: "'Segoe UI', system-ui, sans-serif",
             color: '#1a1a2e',
-            padding: '28px 20px 80px',
             overflow: 'auto',
           }}
         >
-          {/* Decorative background shapes — mirrors Booth's subtle pattern */}
+          {/* Decorative background shapes */}
           <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
             <svg width="100%" height="100%" style={{ position: 'absolute', opacity: 0.06 }}>
               <circle cx="15%" cy="18%" r="22" fill="none" stroke="#a0845c" strokeWidth="1.5" />
@@ -2500,214 +2515,106 @@ export default function ShootingGame({ canvasId, player1, player2, pressedKeys }
             </svg>
           </div>
 
-          {/* Player + Character label */}
-          <div style={{ position: 'relative', textAlign: 'center', marginBottom: '20px' }}>
-            <div style={{
-              fontSize: '9px',
-              letterSpacing: '3px',
-              textTransform: 'uppercase',
-              color: '#b8a898',
-              marginBottom: '4px',
-              fontWeight: 600,
-            }}>
-              {isLeftPanel ? 'Player 1' : 'Player 2'}
-            </div>
-            <div style={{
-              fontSize: '26px',
-              fontWeight: 900,
-              letterSpacing: '1px',
-              textTransform: 'uppercase',
-              color: stats.color,
-              lineHeight: 1,
-            }}>
-              {stats.name}
-            </div>
-          </div>
-
-          {/* Level Selection */}
-          <div style={{ width: '100%', maxWidth: '290px', marginBottom: '14px' }}>
-            <div style={{
-              fontSize: '8px',
-              letterSpacing: '3px',
-              color: '#b8a898',
-              textTransform: 'uppercase',
-              marginBottom: '8px',
-              textAlign: 'center',
-              fontWeight: 600,
-            }}>
-              Select Level
-            </div>
-            <div style={{ display: 'flex', gap: '7px' }}>
-              {Object.entries(DIFFICULTY_PRESETS).map(([key, preset]) => {
-                const isSelected = currentDiff === key
-                return (
-                  <button
-                    key={key}
-                    onClick={() => selectDifficulty(key)}
-                    style={{
-                      flex: 1,
-                      padding: '11px 6px 9px',
-                      border: isSelected ? `2px solid ${preset.color}` : '2px solid #e6d9c8',
-                      borderRadius: '12px',
-                      background: isSelected ? `${preset.color}18` : '#fff',
-                      color: isSelected ? preset.color : '#b8a898',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                      fontFamily: 'inherit',
-                      textAlign: 'center',
-                      boxShadow: isSelected
-                        ? `0 4px 14px ${preset.color}28`
-                        : '0 1px 4px rgba(0,0,0,0.05)',
-                      transform: isSelected ? 'translateY(-2px)' : 'translateY(0)',
-                    }}
-                  >
-                    <div style={{ fontSize: '17px', marginBottom: '3px' }}>{preset.icon}</div>
-                    <div style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '0.5px' }}>{preset.label}</div>
-                    <div style={{ fontSize: '7.5px', marginTop: '3px', opacity: 0.75, lineHeight: 1.4, color: isSelected ? preset.color : '#c0b0a0' }}>
-                      {preset.desc}
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-            {!bothAgreed && (p1Diff || p2Diff) && (
-              <div style={{
-                fontSize: '7.5px',
-                color: '#e07060',
-                marginTop: '7px',
-                letterSpacing: '1px',
-                textAlign: 'center',
-                fontWeight: 600,
-              }}>
-                BOTH PLAYERS MUST SELECT THE SAME LEVEL
-              </div>
-            )}
-          </div>
-
-          {/* Controls */}
-          <div style={{
-            width: '100%',
-            maxWidth: '290px',
-            padding: '12px 16px',
-            background: '#fff',
-            border: '1.5px solid #e6d9c8',
-            borderRadius: '12px',
-            marginBottom: '18px',
-            boxShadow: '0 1px 6px rgba(0,0,0,0.04)',
-          }}>
-            <div style={{
-              fontSize: '8px',
-              letterSpacing: '3px',
-              color: '#b8a898',
-              textTransform: 'uppercase',
-              marginBottom: '10px',
-              textAlign: 'center',
-              fontWeight: 600,
-            }}>
-              Controls
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {controlsInfo.map((ctrl) => (
-                <div
-                  key={ctrl.action}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '2px 0',
-                  }}
-                >
-                  <span style={{ fontSize: '11px', color: '#888', fontWeight: 500 }}>{ctrl.action}</span>
-                  <div style={{ display: 'flex', gap: '3px' }}>
-                    {ctrl.key.split(' / ').map((k) => (
-                      <span
-                        key={k}
-                        style={{
-                          display: 'inline-block',
-                          padding: '2px 8px',
-                          background: '#f5ede0',
-                          border: '1px solid #ddd0bc',
-                          borderBottom: '2.5px solid #c8b89e',
-                          borderRadius: '5px',
-                          fontSize: '11px',
-                          fontWeight: 700,
-                          color: '#6a5840',
-                          fontFamily: "'SF Mono', 'Consolas', monospace",
-                          lineHeight: '16px',
-                          minWidth: '20px',
-                          textAlign: 'center',
-                        }}
-                      >
-                        {k}
-                      </span>
+          <div style={{ display: 'flex', width: '100%', maxWidth: '900px', justifyContent: 'space-between', alignItems: 'center', zIndex: 1 }}>
+            {/* Player 1 Card/Controls */}
+            <div style={{ width: '250px', textAlign: 'center' }}>
+               <div style={{ fontSize: '10px', letterSpacing: '3px', textTransform: 'uppercase', color: '#b8a898', marginBottom: '6px', fontWeight: 600 }}>Player 1</div>
+               <div style={{ fontSize: '28px', fontWeight: 900, textTransform: 'uppercase', color: (CHARACTER_STATS[player1?.avatarKey || 'joy'] || DEFAULT_STATS).color }}>{player1?.name || 'Player 1'}</div>
+               <div style={{ marginTop: '24px', padding: '16px', background: '#fff', border: '1.5px solid #e6d9c8', borderRadius: '12px', boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}>
+                  <div style={{ fontSize: '9px', letterSpacing: '3px', color: '#b8a898', textTransform: 'uppercase', marginBottom: '12px', fontWeight: 600 }}>Controls</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {[
+                      { action: 'Move Up', key: 'W' },
+                      { action: 'Move Down', key: 'S' },
+                      { action: 'Move Left', key: 'A' },
+                      { action: 'Move Right', key: 'D' },
+                      { action: 'Shoot', key: 'G' },
+                    ].map((ctrl) => (
+                      <div key={ctrl.action} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '12px', color: '#888', fontWeight: 500 }}>{ctrl.action}</span>
+                        <span style={{ padding: '3px 10px', background: '#f5ede0', border: '1px solid #ddd0bc', borderBottom: '2.5px solid #c8b89e', borderRadius: '6px', fontSize: '12px', fontWeight: 700, color: '#6a5840', fontFamily: "'SF Mono', 'Consolas', monospace" }}>{ctrl.key}</span>
+                      </div>
                     ))}
                   </div>
-                </div>
-              ))}
+               </div>
+            </div>
+
+            {/* Middle: Selection */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '320px' }}>
+               <div style={{ fontSize: '10px', letterSpacing: '3px', color: '#b8a898', textTransform: 'uppercase', marginBottom: '12px', fontWeight: 600 }}>Select Level</div>
+               <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
+                  {Object.entries(DIFFICULTY_PRESETS).map(([key, preset]) => {
+                    const isSelected = currentDiff === key
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => selectDifficulty(key)}
+                        style={{
+                          flex: 1, padding: '14px 6px 12px', border: isSelected ? `2px solid ${preset.color}` : '2px solid #e6d9c8',
+                          borderRadius: '12px', background: isSelected ? `${preset.color}18` : '#fff', color: isSelected ? preset.color : '#b8a898',
+                          cursor: 'pointer', transition: 'all 0.2s ease', fontFamily: 'inherit', textAlign: 'center',
+                          boxShadow: isSelected ? `0 4px 14px ${preset.color}28` : '0 1px 4px rgba(0,0,0,0.05)',
+                          transform: isSelected ? 'translateY(-2px)' : 'translateY(0)',
+                        }}
+                      >
+                        <div style={{ fontSize: '20px', marginBottom: '4px' }}>{preset.icon}</div>
+                        <div style={{ fontSize: '13px', fontWeight: 800, letterSpacing: '0.5px' }}>{preset.label}</div>
+                        <div style={{ fontSize: '9px', marginTop: '4px', opacity: 0.75, lineHeight: 1.4, color: isSelected ? preset.color : '#c0b0a0' }}>{preset.desc}</div>
+                      </button>
+                    )
+                  })}
+               </div>
+               
+               <button
+                 onClick={handleLaunch}
+                 disabled={!bothAgreed}
+                 style={{
+                   marginTop: '32px', padding: '14px 48px', fontSize: '14px', fontWeight: 800, letterSpacing: '2.5px',
+                   textTransform: 'uppercase', color: bothAgreed ? '#fff' : '#c8b89e', background: bothAgreed ? '#F5A623' : '#ede3d4',
+                   border: 'none', borderRadius: '12px', cursor: bothAgreed ? 'pointer' : 'not-allowed', fontFamily: 'inherit',
+                   boxShadow: bothAgreed ? `0 4px 20px rgba(245, 166, 35, 0.4), 0 1px 0 rgba(255,255,255,0.2) inset` : 'none',
+                   transition: 'all 0.25s ease',
+                 }}
+               >
+                 {bothAgreed ? 'Begin' : 'Select a Level'}
+               </button>
+               {bothAgreed && (
+                 <p style={{ fontSize: '10px', color: '#b8a898', marginTop: '12px', letterSpacing: '1px' }}>or press your SHOOT key to start</p>
+               )}
+            </div>
+
+            {/* Player 2 Card/Controls */}
+            <div style={{ width: '250px', textAlign: 'center' }}>
+               <div style={{ fontSize: '10px', letterSpacing: '3px', textTransform: 'uppercase', color: '#b8a898', marginBottom: '6px', fontWeight: 600 }}>Player 2</div>
+               <div style={{ fontSize: '28px', fontWeight: 900, textTransform: 'uppercase', color: (CHARACTER_STATS[player2?.avatarKey || 'joy'] || DEFAULT_STATS).color }}>{player2?.name || 'Player 2'}</div>
+               <div style={{ marginTop: '24px', padding: '16px', background: '#fff', border: '1.5px solid #e6d9c8', borderRadius: '12px', boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}>
+                  <div style={{ fontSize: '9px', letterSpacing: '3px', color: '#b8a898', textTransform: 'uppercase', marginBottom: '12px', fontWeight: 600 }}>Controls</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {[
+                      { action: 'Move Up', key: 'I / ↑' },
+                      { action: 'Move Down', key: 'K / ↓' },
+                      { action: 'Move Left', key: 'J / ←' },
+                      { action: 'Move Right', key: 'L / →' },
+                      { action: 'Shoot', key: "' / 5" },
+                    ].map((ctrl) => (
+                      <div key={ctrl.action} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '12px', color: '#888', fontWeight: 500 }}>{ctrl.action}</span>
+                        <span style={{ padding: '3px 10px', background: '#f5ede0', border: '1px solid #ddd0bc', borderBottom: '2.5px solid #c8b89e', borderRadius: '6px', fontSize: '12px', fontWeight: 700, color: '#6a5840', fontFamily: "'SF Mono', 'Consolas', monospace" }}>{ctrl.key}</span>
+                      </div>
+                    ))}
+                  </div>
+               </div>
             </div>
           </div>
 
-          {/* Launch Button */}
-          <button
-            onClick={handleLaunch}
-            disabled={!bothAgreed}
-            style={{
-              padding: '12px 36px',
-              fontSize: '12px',
-              fontWeight: 800,
-              letterSpacing: '2.5px',
-              textTransform: 'uppercase',
-              color: bothAgreed ? '#fff' : '#c8b89e',
-              background: bothAgreed ? stats.color : '#ede3d4',
-              border: 'none',
-              borderRadius: '12px',
-              cursor: bothAgreed ? 'pointer' : 'not-allowed',
-              fontFamily: 'inherit',
-              boxShadow: bothAgreed ? `0 4px 20px ${stats.color}44, 0 1px 0 rgba(255,255,255,0.2) inset` : 'none',
-              transition: 'all 0.25s ease',
-            }}
-            onMouseEnter={(e) => {
-              if (!bothAgreed) return
-              e.currentTarget.style.transform = 'translateY(-2px)'
-              e.currentTarget.style.boxShadow = `0 8px 28px ${stats.color}55`
-            }}
-            onMouseLeave={(e) => {
-              if (!bothAgreed) return
-              e.currentTarget.style.transform = 'translateY(0)'
-              e.currentTarget.style.boxShadow = `0 4px 20px ${stats.color}44`
-            }}
-          >
-            {bothAgreed ? 'Begin' : 'Waiting for partner…'}
-          </button>
-
-          {bothAgreed && (
-            <p style={{ fontSize: '8.5px', color: '#b8a898', marginTop: '8px', letterSpacing: '1px' }}>
-              or press your SHOOT key to start
-            </p>
-          )}
-
           {/* Booth-style orange wave footer */}
-          <div style={{
-            position: 'absolute',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            height: '64px',
-            pointerEvents: 'none',
-          }}>
+          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '80px', pointerEvents: 'none' }}>
             <svg viewBox="0 0 400 64" preserveAspectRatio="none" style={{ width: '100%', height: '100%', display: 'block' }}>
               <path d="M0,32 Q100,8 200,32 Q300,56 400,32 L400,64 L0,64 Z" fill="#F5A623" opacity="0.45" />
               <path d="M0,40 Q100,18 200,40 Q300,62 400,40 L400,64 L0,64 Z" fill="#F5A623" opacity="0.65" />
               <path d="M0,50 Q100,32 200,50 Q300,68 400,52 L400,64 L0,64 Z" fill="#F5A623" />
             </svg>
           </div>
-
-          <style>{`
-            @keyframes boothMenuFadeUp {
-              from { opacity: 0; transform: translateY(10px); }
-              to   { opacity: 1; transform: translateY(0); }
-            }
-          `}</style>
         </div>
       )}
 
@@ -2743,6 +2650,7 @@ export default function ShootingGame({ canvasId, player1, player2, pressedKeys }
         <EndCredits
           title="Shooting"
           outcome={matchWinner === 'tie' ? 'tie' : matchWinner === myKey ? 'win' : 'lose'}
+          isPlayer1={isLeftPanel}
           valueLabel="Score"
           myChar={myChar}
           myName={myName}

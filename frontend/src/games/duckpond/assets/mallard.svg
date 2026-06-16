@@ -1,0 +1,14 @@
+<svg width="60" height="40" xmlns="http://www.w3.org/2000/svg">
+  <g>
+    <!-- body -->
+    <ellipse cx="30" cy="20" rx="20" ry="12" fill="#6b8e23" />
+    <!-- belly -->
+    <ellipse cx="32" cy="24" rx="15" ry="7" fill="#caa46a" />
+    <!-- head -->
+    <circle cx="45" cy="10" r="8" fill="#1f6f50" />
+    <!-- beak -->
+    <polygon points="52,8 60,10 52,12" fill="#f4a322" />
+    <!-- eye -->
+    <circle cx="47" cy="8" r="2" fill="#10161f" />
+  </g>
+</svg>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import useGameStore from '../../store/useGameStore'
 import AnimatedBackground from './AnimatedBackground'
+import { getCharacterPortrait } from './characterImages'
 
 export const CHARACTERS = [
   { id: 'joy',           name: 'Joy',           color: '#FFD700', glow: 'rgba(255,215,0,0.35)' },
@@ -64,10 +65,7 @@ function CharacterPanel({ playerLabel, charIndex, name, onCharChange, onNameChan
     <section
       className={`flex-1 min-w-0 flex flex-col items-center relative overflow-hidden rounded-xl ${entranceClass}`}
       style={{
-        background: 'rgba(255,255,255,0.9)',
-        backdropFilter: 'blur(20px)',
-        WebkitBackdropFilter: 'blur(20px)',
-        border: '1px solid rgba(0,0,0,0.05)',
+        background: 'transparent',
         animationDelay: '0.2s'
       }}
     >
@@ -109,6 +107,7 @@ function CharacterPanel({ playerLabel, charIndex, name, onCharChange, onNameChan
             height: 460,
             maxHeight: '100%',
             overflow: 'hidden',
+            perspective: '1200px',
             WebkitMaskImage:
               'linear-gradient(to right, transparent 0%, black 12%, black 88%, transparent 100%)',
             maskImage:
@@ -124,7 +123,21 @@ function CharacterPanel({ playerLabel, charIndex, name, onCharChange, onNameChan
               transition: slideTx,
             }}
           >
-            {items.map(({ char: c, offset }, i) => (
+            {items.map(({ char: c, offset }, i) => {
+              const portrait = getCharacterPortrait(c.id)
+              const flip =
+                (playerLabel === 'Player 1' && c.id === 'ennui') ||
+                (playerLabel === 'Player 2' && ['anger', 'fear', 'anxiety'].includes(c.id))
+              
+              let imgTransform = `${flip ? 'scaleX(-1) ' : ''}scale(1.7) translateZ(30px)`
+              if (c.id === 'anxiety') {
+                if (playerLabel === 'Player 1') {
+                  imgTransform = `translate(24px, 8px) ${imgTransform}`
+                } else {
+                  imgTransform = `translate(-28px, 12px) ${imgTransform}`
+                }
+              }
+              return (
               <div
                 key={i}
                 style={{
@@ -132,36 +145,65 @@ function CharacterPanel({ playerLabel, charIndex, name, onCharChange, onNameChan
                   // no explicit height — flex stretch fills parent's height
                   flexShrink: 0,
                   borderRadius: 14,
-                  background: `linear-gradient(160deg, ${c.color}cc 0%, ${c.color}44 100%)`,
+                  background: `linear-gradient(160deg, ${c.color}dd 0%, ${c.color}55 100%)`,
+                  border: '1px solid rgba(255,255,255,0.15)',
                   boxShadow:
                     offset === 0
-                      ? `0 8px 48px ${c.glow}, 0 0 0 1px rgba(255,255,255,0.07)`
-                      : 'none',
-                  opacity: offset === 0 ? 1 : Math.abs(offset) === 1 ? 0.45 : 0.1,
+                      ? `inset 0 4px 10px rgba(255,255,255,0.4), inset 0 -8px 0 rgba(0,0,0,0.2), 0 12px 0 ${c.color}66, 0 24px 48px ${c.glow}`
+                      : `inset 0 2px 4px rgba(255,255,255,0.1), inset 0 -4px 0 rgba(0,0,0,0.15), 0 6px 0 ${c.color}33, 0 10px 20px rgba(0,0,0,0.1)`,
+                  opacity: offset === 0 ? 1 : Math.abs(offset) === 1 ? 0.6 : 0.2,
                   transform:
-                    offset === 0 ? 'scale(1)' : Math.abs(offset) === 1 ? 'scale(0.9)' : 'scale(0.8)',
+                    offset === 0 
+                      ? 'scale(1) rotateY(0deg) translateZ(40px)' 
+                      : `scale(${1 - Math.abs(offset) * 0.1}) rotateY(${offset > 0 ? -25 : 25}deg) translateZ(0)`,
                   transition: `opacity ${SLIDE_MS}ms ${EASING}, transform ${SLIDE_MS}ms ${EASING}, box-shadow ${SLIDE_MS}ms ${EASING}`,
+                  transformStyle: 'preserve-3d',
                   display: 'flex',
                   alignItems: 'flex-end',
                   justifyContent: 'center',
                   paddingBottom: 14,
                 }}
               >
-                {offset === 0 && (
-                  <span
+                {portrait ? (
+                  <div
                     style={{
-                      fontSize: 10,
-                      letterSpacing: '0.25em',
-                      textTransform: 'uppercase',
-                      color: 'rgba(255,255,255,0.25)',
-                      fontFamily: "'Space Grotesk', sans-serif",
+                      width: '100%',
+                      height: '100%',
+                      animation: offset === 0 ? 'character-bounce 2s ease-in-out infinite' : 'none',
                     }}
                   >
-                    character
-                  </span>
+                    <img
+                      src={portrait}
+                      alt={c.name}
+                      draggable={false}
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'contain',
+                        padding: 4,
+                        transform: imgTransform,
+                        filter: 'drop-shadow(0 12px 24px rgba(0,0,0,0.3))',
+                      }}
+                    />
+                  </div>
+                ) : (
+                  offset === 0 && (
+                    <span
+                      style={{
+                        fontSize: 10,
+                        letterSpacing: '0.25em',
+                        textTransform: 'uppercase',
+                        color: 'rgba(255,255,255,0.25)',
+                        fontFamily: "'Space Grotesk', sans-serif",
+                      }}
+                    >
+                      character
+                    </span>
+                  )
                 )}
               </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       </div>
@@ -169,7 +211,7 @@ function CharacterPanel({ playerLabel, charIndex, name, onCharChange, onNameChan
       {/* ── card carousel ── */}
       <div
         className="relative z-20 w-[90%] max-w-xs mb-2 rounded-lg p-2 shrink-0"
-        style={{ background: 'rgba(255,255,255,0.95)', border: '1px solid rgba(0,0,0,0.08)' }}
+        style={{ background: 'transparent' }}
       >
         <label
           className="block text-center text-[10px] tracking-[0.18em] uppercase mb-1"
@@ -191,7 +233,7 @@ function CharacterPanel({ playerLabel, charIndex, name, onCharChange, onNameChan
       {/* ── circle carousel ── */}
       <div
         className="relative z-20 w-[90%] max-w-xs mb-4 rounded-lg px-3 py-2 flex items-center justify-center gap-3 shrink-0"
-        style={{ background: 'rgba(255,255,255,0.95)', border: '1px solid rgba(0,0,0,0.08)' }}
+        style={{ background: 'transparent' }}
       >
         <button
           onClick={() => navigate('prev')}
@@ -394,9 +436,7 @@ export default function CharacterSelect() {
       <nav
         className="shrink-0 flex items-center gap-1 px-4 py-4 z-50 animate-bounce-in-up"
         style={{
-          background: 'rgba(255,255,255,0.95)',
-          backdropFilter: 'blur(20px)',
-          borderTop: '1px solid rgba(0,0,0,0.05)',
+          background: 'transparent',
           animationDelay: '0.5s'
         }}
       >
@@ -404,14 +444,16 @@ export default function CharacterSelect() {
           <button
             onClick={handleP1Ready}
             disabled={p1Ready}
-            className="flex flex-col items-center justify-center rounded-lg w-44 h-16 cursor-pointer disabled:cursor-default overflow-hidden"
+            className={`flex flex-col items-center justify-center rounded-xl w-44 h-16 cursor-pointer disabled:cursor-default overflow-hidden transition-all duration-200 ${!p1Ready ? 'hover:-translate-y-1 active:translate-y-1' : ''}`}
             style={{
-              background: p1Ready ? p1Char.color : 'rgba(0,0,0,0.02)',
+              background: p1Ready ? p1Char.color : '#ffffff',
               color: p1Ready ? '#ffffff' : p1Char.color,
-              border: `2px solid ${p1Ready ? 'transparent' : p1Char.color + '44'}`,
-              boxShadow: p1Ready ? `0 0 22px ${p1Char.glow}` : 'none',
+              border: `2px solid ${p1Ready ? 'transparent' : p1Char.color + '66'}`,
+              boxShadow: p1Ready 
+                ? `0 3px 0 rgba(0,0,0,0.2) inset, 0 4px 20px ${p1Char.glow}` 
+                : `0 6px 0 ${p1Char.color}66, 0 8px 16px rgba(0,0,0,0.1)`,
               fontFamily: "'Space Grotesk', sans-serif",
-              transition: 'background 0.2s, color 0.2s, box-shadow 0.2s',
+              transform: p1Ready ? 'translateY(4px)' : undefined,
             }}
           >
             <span className="material-symbols-outlined text-xl leading-none">
@@ -427,10 +469,10 @@ export default function CharacterSelect() {
           {bothReady ? (
             <button
               onClick={startGame}
-              className="px-10 py-3 rounded-lg font-extrabold text-sm tracking-widest uppercase text-gray-950 active:scale-95 transition-transform cursor-pointer"
+              className="px-10 py-3 rounded-xl font-extrabold text-sm tracking-widest uppercase text-gray-950 hover:-translate-y-1 active:translate-y-1 transition-all duration-200 cursor-pointer"
               style={{
                 background: `linear-gradient(90deg, ${p1Char.color}, ${p2Char.color})`,
-                boxShadow: `0 0 28px ${p1Char.glow}, 0 0 28px ${p2Char.glow}`,
+                boxShadow: `0 6px 0 rgba(0,0,0,0.15), 0 8px 28px ${p1Char.glow}, 0 8px 28px ${p2Char.glow}`,
                 fontFamily: "'Plus Jakarta Sans', sans-serif",
               }}
             >
@@ -455,14 +497,16 @@ export default function CharacterSelect() {
           <button
             onClick={handleP2Ready}
             disabled={p2Ready}
-            className="flex flex-col items-center justify-center rounded-lg w-44 h-16 cursor-pointer disabled:cursor-default overflow-hidden"
+            className={`flex flex-col items-center justify-center rounded-xl w-44 h-16 cursor-pointer disabled:cursor-default overflow-hidden transition-all duration-200 ${!p2Ready ? 'hover:-translate-y-1 active:translate-y-1' : ''}`}
             style={{
-              background: p2Ready ? p2Char.color : 'rgba(0,0,0,0.02)',
+              background: p2Ready ? p2Char.color : '#ffffff',
               color: p2Ready ? '#ffffff' : p2Char.color,
-              border: `2px solid ${p2Ready ? 'transparent' : p2Char.color + '44'}`,
-              boxShadow: p2Ready ? `0 0 22px ${p2Char.glow}` : 'none',
+              border: `2px solid ${p2Ready ? 'transparent' : p2Char.color + '66'}`,
+              boxShadow: p2Ready 
+                ? `0 3px 0 rgba(0,0,0,0.2) inset, 0 4px 20px ${p2Char.glow}` 
+                : `0 6px 0 ${p2Char.color}66, 0 8px 16px rgba(0,0,0,0.1)`,
               fontFamily: "'Space Grotesk', sans-serif",
-              transition: 'background 0.2s, color 0.2s, box-shadow 0.2s',
+              transform: p2Ready ? 'translateY(4px)' : undefined,
             }}
           >
             <span className="material-symbols-outlined text-xl leading-none">

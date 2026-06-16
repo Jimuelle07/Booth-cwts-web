@@ -9,6 +9,8 @@
 // store action or the global phase switch — pressing a button on either side
 // drives both panels.
 
+import { getCharacterPortrait } from './landing_page/characterImages'
+
 const OUTCOME = {
   win: { icon: 'emoji_events', label: 'YOU WIN!' },
   lose: { icon: 'sentiment_dissatisfied', label: 'DEFEAT' },
@@ -87,6 +89,50 @@ function CastRow({ char, name, isMe, value, valueLabel }) {
   )
 }
 
+function CharacterCard({ char, img, isWinner }) {
+  return (
+    <div
+      className="relative rounded-xl overflow-hidden border border-white/20"
+      style={{
+        width: '100%',
+        height: '100%',
+        background: `linear-gradient(180deg, ${char.color}44 0%, rgba(0,0,0,0.9) 100%)`,
+        boxShadow: isWinner ? `0 0 40px ${char.glow}` : 'none',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+        padding: '6px 4px'
+      }}
+    >
+      {img && (
+        <img 
+          src={img} 
+          className="absolute inset-0 w-full h-full object-contain"
+          style={{ top: '-10%', height: '110%' }}
+          alt={char.name}
+        />
+      )}
+      <div 
+        className="relative z-10 w-full text-center py-1 rounded"
+        style={{
+          background: 'rgba(0,0,0,0.6)',
+          backdropFilter: 'blur(4px)',
+          border: `1px solid ${char.color}55`,
+          color: char.color,
+          fontSize: 10,
+          fontWeight: 800,
+          letterSpacing: '0.1em',
+          textTransform: 'uppercase',
+          fontFamily: "'Space Grotesk', sans-serif",
+        }}
+      >
+        {char.name}
+      </div>
+    </div>
+  )
+}
+
 export default function EndCredits({
   title,
   outcome,
@@ -101,20 +147,31 @@ export default function EndCredits({
   playAgainKey,
   onPlayAgain,
   onBackToSelect,
+  isPlayer1,
 }) {
+  if (isPlayer1 === false) return null;
+
   const o = OUTCOME[outcome] ?? OUTCOME.tie
   const accent = outcome === 'win' ? myChar.color : outcome === 'lose' ? oppChar.color : '#ffffff'
   const glow = outcome === 'win' ? myChar.glow : outcome === 'lose' ? oppChar.glow : 'rgba(255,255,255,0.3)'
 
+  const winnerChar = outcome === 'lose' ? oppChar : myChar;
+  const winnerImg = getCharacterPortrait(winnerChar?.id);
+  const winnerName = outcome === 'lose' ? oppName : myName;
+
   return (
     <div
-      className="absolute inset-0 z-30 flex flex-col items-center justify-center px-6"
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center px-6"
       style={{ background: 'rgba(10,8,16,0.94)', backdropFilter: 'blur(10px)' }}
     >
       <style>{`
         @keyframes endCreditsRise {
           from { opacity: 0; transform: translateY(16px); }
           to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes winnerCardRise {
+          from { opacity: 0; transform: translateY(20px) scale(0.9); }
+          to   { opacity: 1; transform: translateY(0) scale(1); }
         }
       `}</style>
 
@@ -136,12 +193,28 @@ export default function EndCredits({
         </span>
 
         {/* result */}
-        <span
-          className="material-symbols-outlined"
-          style={{ fontSize: 64, color: accent, filter: `drop-shadow(0 0 16px ${glow})`, marginTop: 14 }}
-        >
-          {o.icon}
-        </span>
+        {outcome === 'tie' ? (
+          <span
+            className="material-symbols-outlined"
+            style={{ fontSize: 64, color: accent, filter: `drop-shadow(0 0 16px ${glow})`, marginTop: 14 }}
+          >
+            {o.icon}
+          </span>
+        ) : (
+          <div className="relative mt-8 mb-2 w-full flex justify-center items-center" style={{ height: 160 }}>
+            {/* Winner Card (Middle) */}
+            <div 
+              style={{ 
+                width: 130, 
+                height: 170, 
+                animation: 'winnerCardRise 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) both',
+                zIndex: 10,
+              }}
+            >
+              <CharacterCard char={winnerChar} img={winnerImg} isWinner={true} />
+            </div>
+          </div>
+        )}
         <div
           style={{
             color: accent,
@@ -150,9 +223,10 @@ export default function EndCredits({
             marginTop: 8,
             fontFamily: "'Plus Jakarta Sans', sans-serif",
             textAlign: 'center',
+            textTransform: 'uppercase',
           }}
         >
-          {outcome === 'lose' ? `${oppName} Wins!` : o.label}
+          {outcome === 'tie' ? o.label : `${winnerName} WINS!`}
         </div>
 
         {subtitle && (

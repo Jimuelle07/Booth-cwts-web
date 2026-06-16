@@ -1,394 +1,512 @@
-import { useEffect, useRef, useCallback, useState } from 'react'
-import {
-  attachRenderer,
-  detachRenderer,
-  resetRun,
-  restartRun,
-  getSnapshot,
-  dispose,
-  tick,
-  calculateFinalResult,
-} from './State.js'
-import { createInputReader } from './engine/Input.js'
-import {
-  updatePlayer,
-  touchCheckpoint,
-  filterActivePlatforms,
-  createCrumblingState,
-  updateCrumblingTimers,
-  getMovingPlatformState,
-  isPlatformActive,
-} from './engine/Physics.js'
-import { stages } from './levels/index.js'
-import { createRenderer, renderFrame } from './rendering/Renderer.js'
-import { createCamera, followCamera, triggerShake } from './engine/Camera.js'
-import { drawOverlay, setCalculateFinalResult } from './rendering/Overlay.js'
-import {
-  createParticleSystem,
-  updateParticles,
-  spawnDeathParticles,
-  spawnFinishParticles,
-  spawnLandingDust,
-  spawnJumpPuff,
-  spawnWallJumpBurst,
-  emitGrabContactParticles,
-} from './rendering/Particles.js'
-import useGameStore from '../../store/useGameStore.js'
+import { useEffect, useRef, useState, useCallback } from 'react'
+import useGameStore from '../../store/useGameStore'
 import { CHARACTERS } from '../../components/landing_page/CharacterSelect'
 import EndCredits from '../../components/EndCredits'
+import useParkourStore, { STAGE_COUNT, STAGES_TO_WIN } from './useParkourStore'
+import { STAGES, THEMES, WORLD_WIDTH } from './levels'
 
-setCalculateFinalResult(calculateFinalResult)
+import p1Idle from './assets/player1/player1_idle.png'
+import p1Walk1 from './assets/player1/player1_walk1.png'
+import p1Walk2 from './assets/player1/player1_walk2.png'
+import p1Jump from './assets/player1/player1_jump.png'
 
-// Cumulative race time (ms) → "M:SS.cs" for the end-credits readout.
-function formatRaceTime(ms) {
-  const totalCs = Math.round(ms / 10)
-  const cs = totalCs % 100
-  const totalSec = Math.floor(totalCs / 100)
-  const sec = totalSec % 60
-  const min = Math.floor(totalSec / 60)
-  return `${min}:${String(sec).padStart(2, '0')}.${String(cs).padStart(2, '0')}`
+import p2Idle from './assets/player2/player2_idle.png'
+import p2Walk1 from './assets/player2/player2_walk1.png'
+import p2Walk2 from './assets/player2/player2_walk2.png'
+import p2Jump from './assets/player2/player2_jump.png'
+
+import platImgSrc from './assets/platforms/platform.png'
+import cloudImgSrc from './assets/platforms/cloud.png'
+import treeImgSrc from './assets/platforms/tree.png'
+import groundImgSrc from './assets/ground/ground.png'
+
+import bg1ImgSrc from './assets/bg1.png'
+import bg2ImgSrc from './assets/bg2.png'
+import bg3ImgSrc from './assets/bg3.png'
+
+// ─── physics tuning (world units = px, time = seconds) ───────────────────────
+const GRAVITY = 1500
+const MOVE_SPEED = 230
+const JUMP_V = -640 // initial jump velocity (apex ≈ 135px)
+const TREE_BOUNCE_V = -900 // springy branch launch
+const MAX_FALL = 1100
+const SUBSTEPS = 4
+const PLAYER_W = 30
+const PLAYER_H = 34
+
+// ─── cloud lifecycle (ms) ────────────────────────────────────────────────────
+const CLOUD_FADE_MS = 600 // collidable grace period after you land
+const CLOUD_RESPAWN_MS = 1400 // time spent gone before puffing back
+
+// canvas-left drives Player 1, canvas-right drives Player 2.
+const PANELS = {
+  'canvas-left': {
+    playerKey: 'player1',
+    controls: { left: ['a'], right: ['d'], jump: ['w'] },
+  },
+  'canvas-right': {
+    playerKey: 'player2',
+    controls: { left: ['j', 'ArrowLeft'], right: ['l', 'ArrowRight'], jump: ['i', 'ArrowUp'] },
+  },
 }
 
-// Global slow-mo factor applied to the simulation step (1 = real time).
-// Lower = calmer, more controllable movement and a slower-counting race timer.
-const SIM_SPEED = 0.7
-
-const PANEL_MAP = {
-  'canvas-left': { panelSlot: 'left', playerId: 'p1' },
-  'canvas-right': { panelSlot: 'right', playerId: 'p2' },
+function makeIsDown(pressedKeys) {
+  return (key) =>
+    pressedKeys.has(key) || pressedKeys.has(key.toUpperCase()) || pressedKeys.has(key.toLowerCase())
 }
 
-let particleSystem = createParticleSystem()
-let crumblingState = createCrumblingState()
-// Tracks which players have already played their finish celebration this stage,
-// keyed by `${runId}:${stageIndex}:${playerId}`. Cleared on each countdown.
-let finishFxKeys = new Set()
+function spawnPlayer(stage, playerKey) {
+  const s = playerKey === 'player1' ? stage.spawn.p1 : stage.spawn.p2
+  return { x: s.x, y: s.y, w: PLAYER_W, h: PLAYER_H, vx: 0, vy: 0, onGround: false, facing: 1, walkTime: 0 }
+}
 
-function resizeCanvas(canvas) {
-  const dpr = window.devicePixelRatio || 1
-  const rect = canvas.getBoundingClientRect()
-  const w = Math.round(rect.width * dpr)
-  const h = Math.round(rect.height * dpr)
-  if (canvas.width !== w || canvas.height !== h) {
-    canvas.width = w
-    canvas.height = h
+// A cloud is collidable unless it has fully faded ('gone').
+function isSolidNow(plat, idx, clouds) {
+  if (plat.type !== 'cloud') return true
+  const c = clouds[idx]
+  return !c || c.phase !== 'gone'
+}
+
+function cloudOpacity(c, now) {
+  if (!c) return 1
+  if (c.phase === 'triggered') {
+    const t = Math.min(1, (now - c.t0) / CLOUD_FADE_MS)
+    return 1 - t * 0.6
   }
-  const ctx = canvas.getContext('2d')
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  return 0.18 // gone
 }
 
-export default function ParkourGame({
-  canvasId,
-  player1,
-  player2,
-  pressedKeys,
-}) {
+// Advance the cloud state machine in place: triggered → gone → (solid again).
+function updateClouds(clouds, now) {
+  for (const idx of Object.keys(clouds)) {
+    const c = clouds[idx]
+    if (c.phase === 'triggered' && now - c.t0 >= CLOUD_FADE_MS) {
+      clouds[idx] = { phase: 'gone', t0: now }
+    } else if (c.phase === 'gone' && now - c.t0 >= CLOUD_RESPAWN_MS) {
+      delete clouds[idx] // absent === solid
+    }
+  }
+}
+
+// Step one player through `dt` seconds against the live stage. Mutates `player`
+// and `clouds` (both panel-local). Returns true once the player crests finishY.
+function stepPlayer(player, dt, stage, clouds, isDown, controls, jumpPressed, now) {
+  const moveDir =
+    (controls.right.some(isDown) ? 1 : 0) - (controls.left.some(isDown) ? 1 : 0)
+  player.vx = moveDir * MOVE_SPEED
+  if (moveDir !== 0) {
+    player.facing = moveDir
+    player.walkTime += dt
+  } else {
+    player.walkTime = 0
+  }
+
+  if (jumpPressed && player.onGround) {
+    player.vy = JUMP_V
+    player.onGround = false
+  }
+
+  const sub = dt / SUBSTEPS
+  for (let i = 0; i < SUBSTEPS; i++) {
+    player.x = Math.max(0, Math.min(player.x + player.vx * sub, stage.worldWidth - player.w))
+
+    const prevBottom = player.y + player.h
+    player.vy = Math.min(player.vy + GRAVITY * sub, MAX_FALL)
+    player.y += player.vy * sub
+    player.onGround = false
+
+    if (player.vy >= 0) {
+      const newBottom = player.y + player.h
+      for (let p = 0; p < stage.platforms.length; p++) {
+        const plat = stage.platforms[p]
+        if (!isSolidNow(plat, p, clouds)) continue
+        const currentPlatX = plat.moving ? plat.x + Math.sin(now / 1000 + plat.y) * 40 : plat.x
+        const overlapsX = player.x + player.w > currentPlatX && player.x < currentPlatX + plat.w
+        const crossedTop = prevBottom <= plat.y && newBottom >= plat.y
+        if (!overlapsX || !crossedTop) continue
+
+        player.y = plat.y - player.h
+        if (plat.type === 'tree') {
+          player.vy = TREE_BOUNCE_V // launch, stay airborne
+        } else {
+          player.vy = 0
+          player.onGround = true
+          if (plat.type === 'cloud' && !clouds[p]) {
+            clouds[p] = { phase: 'triggered', t0: performance.now() }
+          }
+        }
+        break
+      }
+    }
+  }
+
+  return player.y < stage.finishY
+}
+
+// ─── rendering ───────────────────────────────────────────────────────────────
+function roundRect(ctx, x, y, w, h, r) {
+  const rr = Math.min(r, w / 2, h / 2)
+  ctx.beginPath()
+  ctx.roundRect(x, y, w, h, rr)
+}
+
+function drawPlatform(ctx, plat, theme, opacity, images, now) {
+  ctx.save()
+  ctx.globalAlpha = opacity
+  const currentPlatX = plat.moving ? plat.x + Math.sin(now / 1000 + plat.y) * 40 : plat.x
+
+  if (plat.type === 'ground') {
+    const img = images.ground
+    if (img && img.complete && img.naturalWidth > 0) {
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(currentPlatX, plat.y, plat.w, plat.h)
+      ctx.clip()
+      const aspect = img.naturalWidth / img.naturalHeight
+      const drawW = plat.h * aspect
+      for (let tx = 0; tx < plat.w; tx += drawW) {
+        ctx.drawImage(img, currentPlatX + tx, plat.y, drawW + 1, plat.h)
+      }
+      ctx.restore()
+    } else {
+      ctx.fillStyle = '#000'
+      roundRect(ctx, currentPlatX, plat.y, plat.w, plat.h, 4)
+      ctx.fill()
+      ctx.lineWidth = 2
+      ctx.strokeStyle = '#aaa' // gray highlight
+      ctx.shadowColor = '#aaa'
+      ctx.shadowBlur = 8
+      ctx.stroke()
+    }
+  } else {
+    const img = images[plat.type]
+    if (img && img.complete && img.naturalWidth > 0) {
+      // Draw the custom asset. 
+      // Adjust Y slightly so the physics landing plane (plat.y) visually aligns with the top of the sprite
+      const drawH = 40
+      let offsetY = -8
+      if (plat.type === 'cloud') offsetY = -10
+      if (plat.type === 'tree') offsetY = -12
+
+      ctx.drawImage(img, currentPlatX, plat.y + offsetY, plat.w, drawH)
+    } else {
+      // Fallback primitives
+      ctx.fillStyle = '#000'
+      roundRect(ctx, currentPlatX, plat.y, plat.w, plat.h, 4)
+      ctx.fill()
+      ctx.lineWidth = 2
+      ctx.strokeStyle = plat.type === 'tree' ? '#0f0' : plat.type === 'cloud' ? '#fff' : '#f0f'
+      ctx.shadowColor = ctx.strokeStyle
+      ctx.shadowBlur = 8
+      ctx.stroke()
+    }
+  }
+
+  ctx.restore()
+}
+
+function drawPlayer(ctx, player, color, images) {
+  const { x, y, w, h, vy, onGround, facing, walkTime = 0 } = player
+  // squash & stretch from vertical speed
+  const stretch = Math.max(-0.18, Math.min(0.18, vy / 4000))
+  const dw = w * (1 - stretch)
+  const dh = h * (1 + stretch)
+  const cx = x + w / 2
+  const top = y + h - dh
+
+  ctx.save()
+
+  // Determine which state to draw
+  let activeImage = null
+  if (!onGround) {
+    activeImage = images.jump
+  } else if (Math.abs(player.vx) > 0) {
+    // Alternate between the two walking frames
+    const walkFrame = Math.floor(walkTime * 10) % 2
+    activeImage = walkFrame === 0 ? images.walk1 : images.walk2
+  } else {
+    activeImage = images.idle
+  }
+
+  if (activeImage && activeImage.complete && activeImage.naturalWidth > 0) {
+    ctx.translate(cx, 0)
+    ctx.scale(facing, 1)
+
+    // Make the sprite slightly larger than the collision box to look natural
+    const spriteW = dw * 2
+    const spriteH = dh * 1.5
+    ctx.drawImage(activeImage, -spriteW / 2, top - dh * 0.4, spriteW, spriteH)
+  } else {
+    ctx.fillStyle = color
+    roundRect(ctx, cx - dw / 2, top, dw, dh, dw / 2.4)
+    ctx.fill()
+
+    // eyes
+    const eyeY = top + dh * 0.36
+    const eyeDx = dw * 0.2
+    const er = dw * 0.13
+    for (const sign of [-1, 1]) {
+      ctx.fillStyle = '#fff'
+      ctx.beginPath()
+      ctx.arc(cx + sign * eyeDx, eyeY, er, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.fillStyle = '#1a1530'
+      ctx.beginPath()
+      ctx.arc(cx + sign * eyeDx + facing * er * 0.4, eyeY, er * 0.55, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  }
+
+  ctx.restore()
+}
+
+// ─── sprite assets ───────────────────────────────────────────────────────────
+const platformImages = {
+  platform: new Image(),
+  cloud: new Image(),
+  tree: new Image(),
+  ground: new Image(),
+  bg1: new Image(),
+  bg2: new Image(),
+  bg3: new Image(),
+}
+platformImages.platform.src = platImgSrc
+platformImages.cloud.src = cloudImgSrc
+platformImages.tree.src = treeImgSrc
+platformImages.ground.src = groundImgSrc
+platformImages.bg1.src = bg1ImgSrc
+platformImages.bg2.src = bg2ImgSrc
+platformImages.bg3.src = bg3ImgSrc
+
+const p1Images = {
+  idle: new Image(),
+  walk1: new Image(),
+  walk2: new Image(),
+  jump: new Image(),
+}
+p1Images.idle.src = p1Idle
+p1Images.walk1.src = p1Walk1
+p1Images.walk2.src = p1Walk2
+p1Images.jump.src = p1Jump
+
+const p2Images = {
+  idle: new Image(),
+  walk1: new Image(),
+  walk2: new Image(),
+  jump: new Image(),
+}
+p2Images.idle.src = p2Idle
+p2Images.walk1.src = p2Walk1
+p2Images.walk2.src = p2Walk2
+p2Images.jump.src = p2Jump
+
+export default function ParkourGame({ canvasId, player1, player2, pressedKeys }) {
+  const panel = PANELS[canvasId]
   const canvasRef = useRef(null)
-  const hasInitRef = useRef(false)
-  const inputReaderRef = useRef(null)
-  const rendererRef = useRef(null)
-  const cameraRef = useRef(null)
-  const renderRafRef = useRef(null)
-  const [isGameOver, setIsGameOver] = useState(false)
+  const rafRef = useRef(null)
+  const playerRef = useRef(null)
+  const cloudsRef = useRef({})
+  const reportedRef = useRef(false)
+  const seenRoundRef = useRef(0)
+  const seenStageRef = useRef(0)
+  const prevJumpRef = useRef(false)
+  const lastTRef = useRef(0)
+  const countingDownRef = useRef(true)
+  const goFlashRef = useRef(0)
+
+  const [isOver, setIsOver] = useState(false)
   const setPhase = useGameStore((s) => s.setPhase)
 
-  // Refs to access latest values inside the effect without re-triggering it.
-  const isGameOverRef = useRef(isGameOver)
-  const pressedKeysRef = useRef(pressedKeys)
-  useEffect(() => {
-    isGameOverRef.current = isGameOver
-    pressedKeysRef.current = pressedKeys
-  })
-
-  const panel = PANEL_MAP[canvasId]
-
-  const handleRestart = useCallback(() => {
-    restartRun()
-    setIsGameOver(false)
+  const handlePlayAgain = useCallback(() => {
+    useParkourStore.getState().restart()
+    setIsOver(false)
   }, [])
-
-  const handleBackToCharacterSelect = useCallback(() => {
-    dispose()
-    hasInitRef.current = false
-    setPhase('CHARACTER_SELECT')
-  }, [setPhase])
+  const handleBackToSelect = useCallback(() => setPhase('CHARACTER_SELECT'), [setPhase])
 
   useEffect(() => {
+    if (!panel) return
     const canvas = canvasRef.current
-    if (!canvas || !panel) return
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    const { playerKey, controls } = panel
+    const isDown = makeIsDown(pressedKeys)
 
-    const { panelSlot, playerId } = panel
+    const store = useParkourStore.getState()
+    store.mount()
+    store.init()
 
-    if (!hasInitRef.current) {
-      hasInitRef.current = true
-      inputReaderRef.current = createInputReader()
-      particleSystem = createParticleSystem()
-      crumblingState = createCrumblingState()
-      finishFxKeys = new Set()
+    // Local reset to a stage's starting line.
+    const resetToStage = (stageIdx) => {
+      const stage = STAGES[stageIdx]
+      playerRef.current = spawnPlayer(stage, playerKey)
+      cloudsRef.current = {}
+      reportedRef.current = false
+      seenStageRef.current = stageIdx
+    }
+    resetToStage(useParkourStore.getState().stageIndex)
+    seenRoundRef.current = useParkourStore.getState().round
+    lastTRef.current = performance.now()
 
-      const snap = getSnapshot()
-      if (!snap.runId) {
-        resetRun({
-          player1: player1 || { name: 'Player 1', avatarKey: 'joy' },
-          player2: player2 || { name: 'Player 2', avatarKey: 'anger' },
-          stage: stages[0],
-        })
+    const resize = () => {
+      const dpr = window.devicePixelRatio || 1
+      const rect = canvas.getBoundingClientRect()
+      canvas.width = Math.round(rect.width * dpr)
+      canvas.height = Math.round(rect.height * dpr)
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    }
+    resize()
+    const ro = new ResizeObserver(resize)
+    ro.observe(canvas)
+
+    const loop = () => {
+      rafRef.current = requestAnimationFrame(loop)
+      const now = performance.now()
+      let dt = (now - lastTRef.current) / 1000
+      lastTRef.current = now
+      if (dt > 0.05) dt = 0.05 // clamp tab-switch stalls
+
+      const snap = useParkourStore.getState()
+
+      // React to restart (round bump) and stage advance from either panel.
+      if (snap.round !== seenRoundRef.current) {
+        seenRoundRef.current = snap.round
+        resetToStage(snap.stageIndex)
+        setIsOver(false)
+        countingDownRef.current = true
+        goFlashRef.current = 0
+      } else if (snap.stageIndex !== seenStageRef.current) {
+        resetToStage(snap.stageIndex)
+      }
+
+      useParkourStore.getState().tickClock()
+
+      const counting = Date.now() < snap.startTime
+      if (countingDownRef.current && !counting) {
+        countingDownRef.current = false
+        goFlashRef.current = 1
+      }
+      if (goFlashRef.current > 0) {
+        goFlashRef.current = Math.max(0, goFlashRef.current - dt * 1.6)
+      }
+
+      const stage = STAGES[snap.stageIndex]
+      const theme = THEMES[stage.theme]
+      const player = playerRef.current
+      const frozen = Boolean(snap.winner) || Boolean(snap.stageWinner) || counting
+
+      // ── update ──
+      const jumpDown = controls.jump.some(isDown)
+      const jumpPressed = jumpDown && !prevJumpRef.current
+      prevJumpRef.current = jumpDown
+
+      updateClouds(cloudsRef.current, now)
+
+      if (!frozen) {
+        const topped = stepPlayer(
+          player, dt, stage, cloudsRef.current, isDown, controls, jumpPressed, now,
+        )
+        if (topped && !reportedRef.current) {
+          reportedRef.current = true
+          useParkourStore.getState().reportStageTop(playerKey)
+        }
+      } else {
+        useParkourStore.getState().advanceStageIfReady()
+        if (snap.winner && !isOver) setIsOver(true)
+      }
+
+      // ── camera (vertical follow, uniform scale by width) ──
+      const dpr = window.devicePixelRatio || 1
+      const cssW = canvas.width / dpr
+      const cssH = canvas.height / dpr
+      const scale = cssW / WORLD_WIDTH
+      const viewH = cssH / scale
+      let camY = player.y + player.h / 2 - viewH / 2
+      camY = Math.max(0, Math.min(camY, Math.max(0, stage.worldHeight - viewH)))
+
+      // ── render ──
+      const bgImg = platformImages[`bg${snap.stageIndex + 1}`]
+      if (bgImg && bgImg.complete) {
+        ctx.drawImage(bgImg, 0, 0, cssW, cssH)
+      } else {
+        const grad = ctx.createLinearGradient(0, 0, 0, cssH)
+        grad.addColorStop(0, theme.skyTop)
+        grad.addColorStop(1, theme.skyBottom)
+        ctx.fillStyle = grad
+        ctx.fillRect(0, 0, cssW, cssH)
+      }
+
+      ctx.save()
+      ctx.scale(scale, scale)
+      ctx.translate(0, -camY)
+
+      // finish line
+      ctx.fillStyle = 'rgba(255,255,255,0.5)'
+      ctx.fillRect(0, stage.finishY, WORLD_WIDTH, 4)
+      ctx.fillStyle = 'rgba(0,0,0,0.35)'
+      ctx.font = 'bold 22px sans-serif'
+      ctx.textAlign = 'center'
+      ctx.fillText('FINISH', WORLD_WIDTH / 2, stage.finishY - 12)
+
+      for (let p = 0; p < stage.platforms.length; p++) {
+        const plat = stage.platforms[p]
+        if (plat.y - camY > viewH + 40 || plat.y - camY < -120) continue // cull
+        const op = plat.type === 'cloud' ? cloudOpacity(cloudsRef.current[p], now) : 1
+        drawPlatform(ctx, plat, theme, op, platformImages, now)
+      }
+
+      const me = playerKey === 'player1' ? player1 : player2
+      const myChar = CHARACTERS.find((c) => c.id === me?.avatarKey) ?? CHARACTERS[0]
+      const imagesToUse = playerKey === 'player1' ? p1Images : p2Images
+      drawPlayer(ctx, player, myChar.color, imagesToUse)
+      ctx.restore()
+
+      drawHud(ctx, cssW, cssH, snap, playerKey, stage, me, theme)
+
+      if (counting) {
+        const remain = snap.startTime - Date.now()
+        const n = Math.ceil(remain / 1000)
+        const sub = (remain % 1000) / 1000
+        const cscale = 0.7 + sub * 0.6
+        ctx.save()
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.globalAlpha = Math.min(1, sub * 1.6)
+        ctx.fillStyle = myChar.color
+        ctx.shadowColor = myChar.glow || '#fff'
+        ctx.shadowBlur = 30
+        ctx.font = `900 ${Math.round(120 * cscale)}px sans-serif`
+        ctx.fillText(String(n), cssW / 2, cssH / 2)
+        ctx.restore()
+        ctx.fillStyle = 'rgba(255,255,255,0.7)'
+        ctx.font = 'bold 16px sans-serif'
+        ctx.textAlign = 'center'
+        ctx.fillText('GET READY', cssW / 2, cssH / 2 + 80)
+      } else if (goFlashRef.current > 0) {
+        ctx.save()
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.globalAlpha = Math.min(1, goFlashRef.current)
+        const cscale = 1 + (1 - goFlashRef.current) * 0.6
+        ctx.translate(cssW / 2, cssH / 2)
+        ctx.scale(cscale, cscale)
+        ctx.fillStyle = '#fff'
+        ctx.shadowColor = myChar.color
+        ctx.shadowBlur = 30
+        ctx.font = '900 96px sans-serif'
+        ctx.fillText('GO!', 0, 0)
+        ctx.restore()
       }
     }
 
-    resizeCanvas(canvas)
-    const resizeObserver = new ResizeObserver(() => resizeCanvas(canvas))
-    resizeObserver.observe(canvas)
-
-    const currentStage = stages[getSnapshot().currentStageIndex] || stages[0]
-    const camera = createCamera(currentStage.width, currentStage.height)
-
-    // Jump camera to player position so characters are visible immediately
-    const dpr = window.devicePixelRatio || 1
-    const viewW = canvas.width / dpr
-    const viewH = canvas.height / dpr
-    const snap = getSnapshot()
-    const targetPlayer = playerId === 'p1' ? snap.player1 : snap.player2
-    if (targetPlayer && viewW > 0 && viewH > 0) {
-      camera.x = Math.max(
-        0,
-        Math.min(
-          targetPlayer.x + targetPlayer.width / 2 - viewW / 2,
-          currentStage.width - viewW
-        )
-      )
-      camera.y = Math.max(
-        0,
-        Math.min(
-          targetPlayer.y + targetPlayer.height / 2 - viewH / 2,
-          currentStage.height - viewH
-        )
-      )
-    }
-
-    cameraRef.current = camera
-
-    const renderer = createRenderer(canvas, camera, playerId, currentStage)
-    rendererRef.current = renderer
-
-    // Track the rendered stage so the camera can re-frame when the level
-    // changes mid-run (stages differ in size).
-    let lastStageIndex = snap.currentStageIndex
-
-    // Each panel renders its OWN canvas on its OWN RAF, following its OWN
-    // player. The shared loop below only steps the simulation once per frame
-    // so physics stays in sync across both views.
-    const renderPanel = () => {
-      const r = rendererRef.current
-      const c = cameraRef.current
-      if (!r || !c) return
-      const snap = getSnapshot()
-      const stage = stages[snap.currentStageIndex] || stages[0]
-      r.stage = stage
-      r.camera = c
-      // Keep clamp bounds in sync with the active stage. Without this the camera
-      // stays clamped to stage 1's size and can't scroll to the bottom spawn of
-      // a taller stage — making respawned players look like they vanished.
-      c.levelWidth = stage.width
-      c.levelHeight = stage.height
-
-      const targetPlayer = playerId === 'p1' ? snap.player1 : snap.player2
-      if (targetPlayer) {
-        const dpr = window.devicePixelRatio || 1
-        if (snap.currentStageIndex !== lastStageIndex) {
-          // New stage — snap straight to the player at the new spawn instead of
-          // panning the whole way across the level.
-          lastStageIndex = snap.currentStageIndex
-          const vw = canvas.width / dpr
-          const vh = canvas.height / dpr
-          c.x = Math.max(0, Math.min(targetPlayer.x + targetPlayer.width / 2 - vw / 2, stage.width - vw))
-          c.y = Math.max(0, Math.min(targetPlayer.y + targetPlayer.height / 2 - vh / 2, stage.height - vh))
-        }
-        if (targetPlayer._shakeRequest > 0) {
-          triggerShake(c, targetPlayer._shakeRequest)
-          targetPlayer._shakeRequest = 0
-        }
-        followCamera(
-          c,
-          targetPlayer.x + targetPlayer.width / 2,
-          targetPlayer.y + targetPlayer.height / 2,
-          canvas.width / dpr,
-          canvas.height / dpr
-        )
-      }
-
-      const players = [snap.player1, snap.player2].filter(Boolean)
-      const visiblePlatforms = stage.platforms.filter((p) =>
-        isPlatformActive(p, crumblingState)
-      )
-      const visibleStage = { ...stage, platforms: visiblePlatforms }
-      renderFrame(r, players, visibleStage, particleSystem)
-      const ctx = canvas.getContext('2d')
-      drawOverlay(ctx, canvas, snap, playerId, snap.currentStageIndex)
-
-      if (snap.phase === 'gameOver' && !isGameOverRef.current) {
-        setIsGameOver(true)
-      } else if (snap.phase !== 'gameOver' && isGameOverRef.current) {
-        setIsGameOver(false)
-      }
-    }
-
-    attachRenderer({ panelSlot, playerId, canvas })
-
-    const snapshot = getSnapshot()
-    snapshot.loopControls.start({
-      requestAnimationFrame: window.requestAnimationFrame.bind(window),
-      cancelAnimationFrame: window.cancelAnimationFrame.bind(window),
-      simulate: (rawDt) => {
-        // Uniformly slow the whole simulation — movement, jumps, animations and
-        // the race timer all run at SIM_SPEED of real time for a calmer pace.
-        const dt = rawDt * SIM_SPEED
-        const snap = getSnapshot()
-        const stage = stages[snap.currentStageIndex] || stages[0]
-
-        if (snap.phase === 'countdown') finishFxKeys.clear()
-
-        if (snap.phase === 'racing') {
-          const input = inputReaderRef.current.read(pressedKeysRef.current)
-
-          const crumblingPlatforms = stage.platforms.filter(
-            (p) => p.type === 'crumbling'
-          )
-          updateCrumblingTimers(
-            crumblingState,
-            crumblingPlatforms,
-            [snap.player1, snap.player2].filter(Boolean),
-            dt
-          )
-
-          const stateKeyToPhysicsKey = { player1: 'p1', player2: 'p2' }
-          for (const [stateKey, physicsKey] of Object.entries(
-            stateKeyToPhysicsKey
-          )) {
-            const playerData = snap[stateKey]
-            if (!playerData) continue
-
-            const movingPlatforms = stage.movingPlatforms.map((mp) =>
-              getMovingPlatformState(mp, snap.raceTimeMs, dt)
-            )
-            const activePlatforms = filterActivePlatforms(
-              [...stage.platforms, ...movingPlatforms],
-              crumblingState
-            )
-
-            const events = updatePlayer(
-              playerData,
-              input[physicsKey],
-              dt,
-              stage,
-              activePlatforms,
-              stage.hazards,
-              snap.phase,
-              [snap.player1, snap.player2].filter(Boolean)
-            )
-            for (const ev of events) {
-              if (ev.type === 'death') {
-                spawnDeathParticles(particleSystem, playerData.x, playerData.y)
-                playerData._shakeRequest = 14
-              }
-              if (ev.type === 'grab') {
-                emitGrabContactParticles(particleSystem, ev.x, ev.y)
-              }
-              if (ev.type === 'land') {
-                spawnLandingDust(particleSystem, ev.x, ev.y, ev.intensity)
-                if (ev.intensity > 0.4) {
-                  playerData._shakeRequest = Math.max(
-                    playerData._shakeRequest,
-                    4 + 6 * ev.intensity
-                  )
-                }
-              }
-              if (ev.type === 'jump') {
-                spawnJumpPuff(particleSystem, ev.x, ev.y)
-              }
-              if (ev.type === 'walljump') {
-                spawnWallJumpBurst(particleSystem, ev.x, ev.y, ev.dir)
-                playerData._shakeRequest = Math.max(
-                  playerData._shakeRequest,
-                  3
-                )
-              }
-            }
-            touchCheckpoint(playerData, stage.checkpoints)
-          }
-
-          const finishMap = {}
-          if (
-            snap.player1 &&
-            snap.player1.y <= stage.finishZone.y + stage.finishZone.height
-          )
-            finishMap.p1 = true
-          if (
-            snap.player2 &&
-            snap.player2.y <= stage.finishZone.y + stage.finishZone.height
-          )
-            finishMap.p2 = true
-
-          // Finish celebration — confetti + shake once per player per stage
-          for (const pid of ['p1', 'p2']) {
-            if (!finishMap[pid]) continue
-            const key = `${snap.runId}:${snap.currentStageIndex}:${pid}`
-            if (finishFxKeys.has(key)) continue
-            finishFxKeys.add(key)
-            const pl = pid === 'p1' ? snap.player1 : snap.player2
-            if (pl) {
-              spawnFinishParticles(
-                particleSystem,
-                pl.x + pl.width / 2,
-                pl.y + pl.height / 2
-              )
-              pl._shakeRequest = 12
-            }
-          }
-
-          tick(dt, finishMap)
-        } else {
-          tick(dt)
-        }
-
-        updateParticles(particleSystem, dt / 1000)
-      },
-      getRenderers: () => {
-        const snap = getSnapshot()
-        return Object.entries(snap.renderers || {}).map(([slot, data]) => ({
-          panelSlot: slot,
-          ...data,
-        }))
-      },
-      // Rendering is driven per-panel below; the shared loop only simulates.
-      renderRenderer: () => {},
-    })
-
-    // Per-panel render loop — independent RAF so each side draws its own
-    // canvas/camera regardless of which instance owns the simulation loop.
-    const renderTick = () => {
-      renderPanel()
-      renderRafRef.current = window.requestAnimationFrame(renderTick)
-    }
-    renderRafRef.current = window.requestAnimationFrame(renderTick)
+    rafRef.current = requestAnimationFrame(loop)
 
     return () => {
-      resizeObserver.disconnect()
-      if (renderRafRef.current !== null) {
-        window.cancelAnimationFrame(renderRafRef.current)
-        renderRafRef.current = null
-      }
-      detachRenderer(panelSlot)
-      rendererRef.current = null
-      cameraRef.current = null
-
-      const snap = getSnapshot()
-      if (snap.rendererCount === 0) {
-        dispose()
-        hasInitRef.current = false
-      }
+      cancelAnimationFrame(rafRef.current)
+      ro.disconnect()
+      useParkourStore.getState().unmount()
     }
-  }, [canvasId, panel, player1, player2])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canvasId])
 
   if (!panel) {
     return (
@@ -401,45 +519,102 @@ export default function ParkourGame({
   return (
     <div className="relative w-full h-full">
       <canvas ref={canvasRef} id={canvasId} className="w-full h-full block" />
-      {isGameOver && <ParkourEndCredits
-        playerId={panel.playerId}
-        player1={player1}
-        player2={player2}
-        onPlayAgain={handleRestart}
-        onBackToSelect={handleBackToCharacterSelect}
-      />}
+      {isOver && (
+        <ParkourEndCredits
+          playerKey={panel.playerKey}
+          player1={player1}
+          player2={player2}
+          onPlayAgain={handlePlayAgain}
+          onBackToSelect={handleBackToSelect}
+        />
+      )}
     </div>
   )
 }
 
-// Renders the shared end-credits roll for parkour. The cast value is each
-// player's cumulative time across all three stages (lower wins); the winner
-// comes from the run's final result.
-function ParkourEndCredits({ playerId, player1, player2, onPlayAgain, onBackToSelect }) {
-  const isP1 = playerId === 'p1'
-  const oppId = isP1 ? 'p2' : 'p1'
+// HUD: stage progress, win tally, and the "tops Stage N" banner — drawn in screen
+// (CSS-pixel) space on top of the world.
+function drawHud(ctx, w, h, snap, playerKey, stage, me, theme) {
+  const oppKey = playerKey === 'player1' ? 'player2' : 'player1'
+  const dark = theme.skyTop === '#2a2350'
 
-  const { totals, winner } = calculateFinalResult(getSnapshot().stageResults)
+  ctx.save()
+  ctx.textAlign = 'left'
+  ctx.fillStyle = dark ? 'rgba(255,255,255,0.9)' : 'rgba(20,16,40,0.85)'
+  ctx.font = 'bold 13px sans-serif'
+  ctx.fillText(`Stage ${snap.stageIndex + 1}/${STAGE_COUNT} · ${stage.name}`, 12, 22)
+  ctx.font = '12px sans-serif'
+  ctx.fillText(
+    `You ${snap.stageWins[playerKey]}   Rival ${snap.stageWins[oppKey]}   (first to ${STAGES_TO_WIN})`,
+    12, 40,
+  )
+
+  const mm = Math.floor(snap.timeLeft / 60)
+  const ss = String(snap.timeLeft % 60).padStart(2, '0')
+  const timeStr = `${mm}:${ss}`
+  const lowTime = snap.timeLeft <= 10 && !snap.winner
+
+  // Draw pill background for timer
+  ctx.fillStyle = dark ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.6)'
+  ctx.beginPath()
+  ctx.roundRect(w / 2 - 45, 10, 90, 50, 12)
+  ctx.fill()
+
+  ctx.textAlign = 'center'
+  ctx.font = '900 26px "Plus Jakarta Sans", sans-serif'
+  ctx.fillStyle = lowTime ? '#ff3333' : (dark ? '#ffffff' : '#111111')
+  if (lowTime) {
+    ctx.shadowColor = '#ff3333'
+    ctx.shadowBlur = 10
+  }
+  ctx.fillText(timeStr, w / 2, 36)
+  ctx.shadowBlur = 0
+  
+  ctx.font = '700 10px "Space Grotesk", sans-serif'
+  ctx.fillStyle = dark ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.6)'
+  ctx.fillText('TIME LEFT', w / 2, 51)
+
+  if (snap.stageWinner && !snap.winner) {
+    const youWon = snap.stageWinner === playerKey
+    ctx.textAlign = 'center'
+    ctx.fillStyle = youWon ? '#2e7d32' : '#b00020'
+    ctx.font = 'bold 26px sans-serif'
+    ctx.fillText(
+      youWon ? `You top Stage ${snap.stageIndex + 1}!` : `Rival tops Stage ${snap.stageIndex + 1}`,
+      w / 2, h / 2,
+    )
+    ctx.fillStyle = dark ? 'rgba(255,255,255,0.7)' : 'rgba(20,16,40,0.6)'
+    ctx.font = '13px sans-serif'
+    ctx.fillText('Next stage…', w / 2, h / 2 + 26)
+  }
+  ctx.restore()
+}
+
+// Shared end-credits overlay. Each player's value is stages won; the winner is
+// whoever reached STAGES_TO_WIN first.
+function ParkourEndCredits({ playerKey, player1, player2, onPlayAgain, onBackToSelect }) {
+  const { winner, stageWins } = useParkourStore.getState()
+  const isP1 = playerKey === 'player1'
+  const oppKey = isP1 ? 'player2' : 'player1'
 
   const me = isP1 ? player1 : player2
   const opp = isP1 ? player2 : player1
   const myChar = CHARACTERS.find((c) => c.id === me?.avatarKey) ?? CHARACTERS[0]
   const oppChar = CHARACTERS.find((c) => c.id === opp?.avatarKey) ?? CHARACTERS[1]
-  const myName = me?.name || (isP1 ? 'Player 1' : 'Player 2')
-  const oppName = opp?.name || (isP1 ? 'Player 2' : 'Player 1')
 
   return (
     <EndCredits
       title="Parkour"
-      outcome={winner === 'tie' ? 'tie' : winner === playerId ? 'win' : 'lose'}
-      valueLabel="Total Time"
-      subtitle="Fastest cumulative time across all 3 stages wins"
+      outcome={winner === 'tie' ? 'tie' : winner === playerKey ? 'win' : 'lose'}
+      isPlayer1={isP1}
+      valueLabel="Stages Won"
+      subtitle={winner === 'nobody' ? "Time's up! Both players failed to finish." : `First to win ${STAGES_TO_WIN} of ${STAGE_COUNT} stages`}
       myChar={myChar}
-      myName={myName}
-      myValue={formatRaceTime(totals[playerId])}
+      myName={me?.name || (isP1 ? 'Player 1' : 'Player 2')}
+      myValue={stageWins[playerKey]}
       oppChar={oppChar}
-      oppName={oppName}
-      oppValue={formatRaceTime(totals[oppId])}
+      oppName={opp?.name || (isP1 ? 'Player 2' : 'Player 1')}
+      oppValue={stageWins[oppKey]}
       playAgainKey={null}
       onPlayAgain={onPlayAgain}
       onBackToSelect={onBackToSelect}

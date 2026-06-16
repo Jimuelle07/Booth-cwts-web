@@ -3,6 +3,7 @@ import LineDivider from './components/landing_page/LineDivider'
 import MenuScreen from './components/landing_page/MenuScreen'
 import CharacterSelect from './components/landing_page/CharacterSelect'
 import GameSelect from './components/landing_page/GameSelect'
+import CancelGameButton from './components/CancelGameButton'
 import registry from './games/registry'
 import useGameStore from './store/useGameStore'
 
@@ -15,14 +16,6 @@ function GamePanel({ side, canvasId, player1, player2 }) {
 
   return (
     <div className="flex flex-col w-[50vw] h-screen bg-indigo-50">
-      <div className="flex items-center justify-between gap-3 px-4 py-2 bg-indigo-100 border-b border-indigo-200 shrink-0 shadow-sm z-10">
-        <span className="text-xs text-indigo-400 font-semibold uppercase tracking-widest font-mono">
-          {side}
-        </span>
-        <span className="text-indigo-900 font-bold text-sm bg-white px-4 py-1 rounded-full border border-indigo-200 shadow-sm">
-          {registry.find((g) => g.id === selectedGame)?.name ?? 'Unknown Game'}
-        </span>
-      </div>
 
       <div className="flex-1 relative overflow-hidden">
         {ActiveGame ? (
@@ -85,6 +78,7 @@ export default function App() {
         player1={player1}
         player2={player2}
       />
+      <CancelGameButton />
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { CHARACTERS } from '../../components/landing_page/CharacterSelect'
 import useGameStore from '../../store/useGameStore'
 import EndCredits from '../../components/EndCredits'
@@ -397,6 +397,18 @@ export default function BowlingGame({ canvasId, player1, player2, pressedKeys })
   const myState = useBowlingStore((s) => s[myKey])
   const oppTotal = useBowlingStore((s) => s[oppKey].total)
   const oppFinished = useBowlingStore((s) => s[oppKey].finished)
+  const currentRound = useBowlingStore((s) => s.round)
+
+  const [countdown, setCountdown] = useState(5)
+  const countdownRef = useRef(countdown)
+  useEffect(() => { countdownRef.current = countdown }, [countdown])
+  useEffect(() => { setCountdown(5) }, [currentRound])
+  useEffect(() => {
+    if (countdown > 0) {
+      const timer = setTimeout(() => setCountdown((c) => c - 1), 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [countdown])
 
   useEffect(() => {
     const store = useBowlingStore.getState()
@@ -593,7 +605,7 @@ export default function BowlingGame({ canvasId, player1, player2, pressedKeys })
         return
       }
 
-      if (!pd.finished) {
+      if (!pd.finished && countdownRef.current === 0) {
         if (local.phase === 'aim') {
           if (pressedKeys.has(moveKeys.left)) local.ball.x -= L.laneW * AIM_SPEED
           if (pressedKeys.has(moveKeys.right)) local.ball.x += L.laneW * AIM_SPEED
@@ -774,7 +786,7 @@ export default function BowlingGame({ canvasId, player1, player2, pressedKeys })
       <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
 
       {/* controls hint */}
-      {!winner && !myState.finished && (
+      {!winner && !myState.finished && countdown === 0 && (
         <div
           className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 px-3 py-1 rounded-full"
           style={{ background: 'rgba(20,18,28,0.7)', border: '1px solid rgba(255,255,255,0.1)' }}
@@ -782,6 +794,19 @@ export default function BowlingGame({ canvasId, player1, player2, pressedKeys })
           <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: 10, letterSpacing: '0.08em', fontFamily: "'Space Grotesk', sans-serif" }}>
             {isP1 ? 'A / D aim · G to set power, spin & throw' : "J / L aim · ' to set power, spin & throw"}
           </span>
+        </div>
+      )}
+
+      {/* countdown overlay */}
+      {countdown > 0 && !winner && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none" style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }}>
+          <div
+            key={countdown}
+            className="text-white font-extrabold animate-pop-in"
+            style={{ fontSize: 120, fontFamily: "'Plus Jakarta Sans', sans-serif", textShadow: '0 4px 20px rgba(0,0,0,0.5)' }}
+          >
+            {countdown}
+          </div>
         </div>
       )}
 
@@ -803,6 +828,7 @@ export default function BowlingGame({ canvasId, player1, player2, pressedKeys })
         <EndCredits
           title="Bowling"
           outcome={winner === 'tie' ? 'tie' : winner === myKey ? 'win' : 'lose'}
+          isPlayer1={isP1}
           valueLabel="Total"
           myChar={myChar}
           myName={myName}
